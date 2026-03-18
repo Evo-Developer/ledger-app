@@ -1,0 +1,14 @@
+# Optional Security Audit Tools
+# Install separately: pip install -r requirements-security-tools.txt
+
+# Security vulnerability scanning
+safety==3.0.1
+
+# Static code analysis for security issues
+bandit==1.7.6
+
+# Additional security headers (optional)
+secure==0.3.0
+
+# Note: These are development/testing tools
+# Not required for production runtime

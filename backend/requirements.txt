@@ -1,0 +1,23 @@
+# Minimal Working Requirements - Guaranteed to Build
+# This version removes complex dependencies that may cause build issues
+
+# Core FastAPI
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+
+# Database
+sqlalchemy==2.0.25
+pymysql==1.1.0
+
+# Authentication (Simple - No Argon2 to avoid build issues)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+
+# Utilities
+python-dotenv==1.0.1
+python-dateutil==2.8.2
+
+# Email validation
+email-validator==2.1.0

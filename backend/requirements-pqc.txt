@@ -1,0 +1,34 @@
+# Post-Quantum Cryptography Libraries (Optional)
+# Install these when ready to implement PQC features
+# Usage: pip install -r requirements-pqc.txt
+
+# liboqs - Open Quantum Safe library
+# Provides NIST-approved PQC algorithms
+liboqs-python==0.14.1
+
+# Alternative PQC implementation
+# Note: This is experimental and may not be production-ready
+# pqcrypto==0.1.1
+
+# Cryptography library with PQC support (when available)
+# cryptography>=42.0.0
+
+# Installation instructions:
+# 1. Install system dependencies first (Ubuntu/Debian):
+#    sudo apt-get update
+#    sudo apt-get install cmake ninja-build libssl-dev
+#
+# 2. Install liboqs system library:
+#    git clone -b main https://github.com/open-quantum-safe/liboqs.git
+#    cd liboqs && mkdir build && cd build
+#    cmake -GNinja -DCMAKE_INSTALL_PREFIX=/usr/local ..
+#    ninja && sudo ninja install
+#
+# 3. Then install Python package:
+#    pip install -r requirements-pqc.txt
+
+# Supported PQC algorithms in liboqs:
+# - Signatures: Dilithium2, Dilithium3, Dilithium5, Falcon-512, Falcon-1024, SPHINCS+
+# - KEMs: Kyber512, Kyber768, Kyber1024, NTRU-HPS, SABER, FrodoKEM
+#
+# Note: Once installed, update security.py to use PQC algorithms

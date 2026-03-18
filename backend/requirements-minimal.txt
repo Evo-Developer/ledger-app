@@ -1,0 +1,33 @@
+# Minimal Production Requirements - Tested and Conflict-Free
+# Core FastAPI stack
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+
+# Database
+sqlalchemy==2.0.25
+pymysql==1.1.0
+alembic==1.13.1
+
+# Security - Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+argon2-cffi==23.1.0
+
+# Security - Input Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+email-validator==2.1.0.post1
+bleach==6.1.0
+
+# Utilities
+python-dotenv==1.0.1
+python-dateutil==2.8.2
+python-json-logger==2.0.7
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Cryptography (dependency managed by python-jose)
+cryptography>=41.0.0

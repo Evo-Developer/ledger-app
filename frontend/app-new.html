@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ledger - Your Finance Tracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg: #f0f4f8; --surface: #ffffff; --border: #d4e2f0;
+            --text: #1a202c; --text-secondary: #64748b;
+            --accent: #3b82f6; --accent-dark: #2563eb; --accent-light: #60a5fa;
+            --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
+            --radius: 16px; --shadow: 0 2px 8px rgba(59, 130, 246, 0.08);
+            --shadow-lg: 0 12px 32px rgba(59, 130, 246, 0.15);
+            --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        }
+        
+        body {
+            font-family: 'Instrument Sans', sans-serif;
+            background: var(--bg);
+            background-image: radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.03) 0%, transparent 50%),
+                            radial-gradient(circle at 80% 80%, rgba(37, 99, 235, 0.03) 0%, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text);
+            line-height: 1.6;
+        }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        .header {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            color: white; padding: 30px; border-radius: var(--radius); margin-bottom: 30px;
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .title { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { font-size: 16px; opacity: 0.9; }
+        
+        .grid { display: grid; gap: 20px; }
+        .grid-4 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+        
+        .card {
+            background: var(--surface); border-radius: var(--radius);
+            padding: 24px; box-shadow: var(--shadow);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+        
+        .stat-card {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(37, 99, 235, 0.02) 100%);
+            border: 2px solid rgba(59, 130, 246, 0.1);
+        }
+        
+        .stat-label { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; }
+        .stat-value {
+            font-size: 32px; font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .btn {
+            background: var(--gradient-primary);
+            color: white; border: none; padding: 12px 24px;
+            border-radius: 10px; font-size: 15px; font-weight: 600;
+            cursor: pointer; transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+        }
+        
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(59, 130, 246, 0.35); }
+        
+        .tabs {
+            display: flex; gap: 8px; margin-bottom: 20px;
+            border-bottom: 2px solid var(--border); padding-bottom: 0;
+        }
+        
+        .tab-btn {
+            background: none; border: none; padding: 12px 24px;
+            font-size: 16px; font-weight: 600; cursor: pointer;
+            color: var(--text-secondary); border-bottom: 3px solid transparent;
+            transition: all 0.3s; font-family: inherit;
+        }
+        
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; color: var(--text-secondary); font-size: 14px; }
+        
+        .badge {
+            display: inline-block; padding: 4px 12px; border-radius: 12px;
+            font-size: 12px; font-weight: 600;
+        }
+        
+        .badge-income { background: #d1fae5; color: var(--success); }
+        .badge-expense { background: #fee2e2; color: var(--danger); }
+        
+        .text-success { color: var(--success); }
+        .text-danger { color: var(--danger); }
+        
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.5); align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal.show { display: flex; }
+        
+        .modal-content {
+            background: var(--surface); border-radius: var(--radius);
+            padding: 30px; max-width: 500px; width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .modal-title { font-size: 24px; font-weight: 700; }
+        
+        .close-btn {
+            background: none; border: none; font-size: 28px;
+            cursor: pointer; color: var(--text-secondary);
+            width: 36px; height: 36px; display: flex;
+            align-items: center; justify-content: center;
+            border-radius: 8px; transition: all 0.3s;
+        }
+        
+        .close-btn:hover { background: var(--border); }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px; }
+        .form-input, .form-select, .form-textarea {
+            width: 100%; padding: 12px 16px; border: 2px solid var(--border);
+            border-radius: 10px; font-size: 15px; font-family: inherit;
+            transition: all 0.3s; background: var(--surface);
+        }
+        
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none; border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+        
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        
+        .btn-icon {
+            background: none; border: none; font-size: 20px; cursor: pointer;
+            padding: 4px 8px; border-radius: 6px; transition: all 0.2s;
+        }
+        
+        .btn-icon:hover { background: var(--border); }
+        
+        .progress-bar {
+            width: 100%; height: 8px; background: var(--border);
+            border-radius: 4px; overflow: hidden; margin: 8px 0;
+        }
+        
+        .progress-fill {
+            height: 100%; background: var(--gradient-primary);
+            transition: width 0.3s ease;
+        }
+        
+        .progress-fill.over-budget { background: linear-gradient(135deg, var(--danger), #dc2626); }
+        
+        .budget-item, .goal-item {
+            padding: 16px; border: 2px solid var(--border);
+            border-radius: 12px; margin-bottom: 12px;
+        }
+        
+        .budget-header, .goal-header {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: 8px;
+        }
+        
+        .budget-category, .goal-name { font-weight: 600; font-size: 16px; }
+        .budget-amount, .goal-amount { color: var(--text-secondary); font-size: 14px; }
+        
+        .budget-footer, .goal-footer {
+            display: flex; justify-content: space-between;
+            font-size: 14px; color: var(--text-secondary); margin-top: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            .grid-4 { grid-template-columns: 1fr; }
+            .form-row { grid-template-columns: 1fr; }
+            .title { font-size: 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">💰 Ledger</div>
+            <div class="subtitle">Loading...</div>
+            <div class="status" id="backendStatus" style="font-size:13px; opacity:0.85; margin-top: 4px;">Checking backend…</div>
+        </div>
+        
+        <div class="grid grid-4">
+            <div class="card stat-card">
+                <div class="stat-label">Total Balance</div>
+                <div class="stat-value" id="totalBalance">₹0</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">Income</div>
+                <div class="stat-value text-success" id="totalIncome">₹0</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">Expenses</div>
+                <div class="stat-value text-danger" id="totalExpenses">₹0</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">Savings Rate</div>
+                <div class="stat-value" id="savingsRate">0%</div>
+            </div>
+        </div>
+        
+        <div class="card" style="margin-top: 30px;">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('transactions')">Transactions</button>
+                <button class="tab-btn" onclick="switchTab('budgets')">Budgets</button>
+                <button class="tab-btn" onclick="switchTab('goals')">Goals</button>
+            </div>
+            
+            <div id="transactionsTab" class="tab-content active">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                    <h3>Recent Transactions</h3>
+                    <button class="btn" onclick="openModal('transaction')">+ Add Transaction</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Amount</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsTableBody">
+                        <tr><td colspan="6" style="text-align:center;padding:40px;">Loading...</td></tr>
+                    </tbody>
+                </table>
+                <div id="pagination" style="margin-top: 20px; text-align: center;"></div>
+            </div>
+            
+            <div id="budgetsTab" class="tab-content">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                    <h3>Monthly Budgets</h3>
+                    <button class="btn" onclick="openModal('budget')">+ Add Budget</button>
+                </div>
+                <div id="budgetsList"></div>
+            </div>
+            
+            <div id="goalsTab" class="tab-content">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                    <h3>Savings Goals</h3>
+                    <button class="btn" onclick="openModal('goal')">+ Add Goal</button>
+                </div>
+                <div id="goalsList"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Transaction Modal -->
+    <div id="transactionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Transaction</h3>
+                <button class="close-btn" onclick="closeModal('transaction')">&times;</button>
+            </div>
+            <form onsubmit="addTransaction(event)">
+                <div class="form-group">
+                    <label class="form-label">Type</label>
+                    <select class="form-select" id="transactionType" required>
+                        <option value="income">Income</option>
+                        <option value="expense" selected>Expense</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <input type="text" class="form-input" id="transactionDescription" required placeholder="e.g., Grocery shopping">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Amount (₹)</label>
+                        <input type="number" class="form-input" id="transactionAmount" required placeholder="0" step="0.01" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Category</label>
+                        <select class="form-select" id="transactionCategory" required>
+                            <option value="Food">Food</option>
+                            <option value="Transport">Transport</option>
+                            <option value="Shopping">Shopping</option>
+                            <option value="Entertainment">Entertainment</option>
+                            <option value="Bills">Bills</option>
+                            <option value="Health">Health</option>
+                            <option value="Salary">Salary</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Date</label>
+                    <input type="date" class="form-input" id="transactionDate" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes (Optional)</label>
+                    <textarea class="form-textarea" id="transactionNotes" placeholder="Additional details..."></textarea>
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Add Transaction</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Budget Modal -->
+    <div id="budgetModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Budget</h3>
+                <button class="close-btn" onclick="closeModal('budget')">&times;</button>
+            </div>
+            <form onsubmit="addBudget(event)">
+                <div class="form-group">
+                    <label class="form-label">Category</label>
+                    <select class="form-select" id="budgetCategory" required>
+                        <option value="Food">Food</option>
+                        <option value="Transport">Transport</option>
+                        <option value="Shopping">Shopping</option>
+                        <option value="Entertainment">Entertainment</option>
+                        <option value="Bills">Bills</option>
+                        <option value="Health">Health</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Monthly Limit (₹)</label>
+                    <input type="number" class="form-input" id="budgetAmount" required placeholder="0" step="0.01" min="0">
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Add Budget</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Goal Modal -->
+    <div id="goalModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Savings Goal</h3>
+                <button class="close-btn" onclick="closeModal('goal')">&times;</button>
+            </div>
+            <form onsubmit="addGoal(event)">
+                <div class="form-group">
+                    <label class="form-label">Goal Name</label>
+                    <input type="text" class="form-input" id="goalName" required placeholder="e.g., Emergency Fund">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Target Amount (₹)</label>
+                        <input type="number" class="form-input" id="goalTarget" required placeholder="0" step="0.01" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Current Amount (₹)</label>
+                        <input type="number" class="form-input" id="goalCurrent" placeholder="0" step="0.01" min="0" value="0">
+                    </div>
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Add Goal</button>
+            </form>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="assets/api.js"></script>
+    <script>
+        if (!window.api) {
+            console.error('API helper not loaded: /assets/api.js failed to load or threw an error.');
+        }
+// ==================== AUTHENTICATION ====================
+let currentUser = null;
+
+function setAuthToken(token) {
+    if (token) {
+        api.setToken(token);
+    } else {
+        api.clearToken();
+    }
+}
+
+async function checkBackendHealth() {
+    const statusEl = document.getElementById('backendStatus');
+    if (!statusEl) return false;
+
+    try {
+        const response = await fetch(`${window.location.origin}/health`);
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        const data = await response.json();
+        const time = new Date().toLocaleTimeString();
+        statusEl.textContent = `Backend: healthy (${time})`;
+        statusEl.style.color = '#10b981';
+        statusEl.title = `Backend status: ${data.status || 'healthy'}`;
+        return true;
+    } catch (error) {
+        statusEl.textContent = 'Backend: unreachable';
+        statusEl.style.color = '#ef4444';
+        statusEl.title = error.message;
+        return false;
+    }
+}
+
+async function checkAuth() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/index.html';
+        return false;
+    }
+
+    setAuthToken(token);
+
+    try {
+        currentUser = await api.getCurrentUser();
+        updateUserDisplay();
+        return true;
+    } catch (error) {
+        localStorage.removeItem('token');
+        setAuthToken(null);
+        window.location.href = '/index.html';
+        return false;
+    }
+}
+
+function updateUserDisplay() {
+    const userDisplay = document.querySelector('.subtitle');
+    if (userDisplay && currentUser) {
+        userDisplay.innerHTML = `Welcome, <strong>${currentUser.full_name || currentUser.username}</strong> • <a href="#" onclick="logout()" style="color: white; text-decoration: none; opacity: 0.9;">Logout</a>`;
+    }
+}
+
+function logout() {
+    if (confirm('Are you sure you want to logout?')) {
+        localStorage.removeItem('token');
+        setAuthToken(null);
+        window.location.href = '/index.html';
+    }
+}
+
+// ==================== GLOBAL STATE ====================
+let transactions = [];
+let budgets = [];
+let goals = [];
+let currentPage = 1;
+const itemsPerPage = 20;
+
+// ==================== INITIALIZATION ====================
+async function init() {
+    await checkBackendHealth();
+    const isAuthenticated = await checkAuth();
+    if (!isAuthenticated) return;
+
+    showLoading();
+    try {
+        await loadAllData();
+        renderAll();
+        setTodayDate();
+        hideLoading();
+    } catch (error) {
+        console.error('Failed to initialize:', error);
+        hideLoading();
+        showMessage('Failed to load data. Please refresh.', 'error');
+    }
+
+    // Keep backend health status updated periodically.
+    setInterval(checkBackendHealth, 60_000);
+}
+
+async function loadAllData() {
+    try {
+        const [txns, bdgts, gls] = await Promise.all([
+            api.getTransactions(),
+            api.getBudgets(),
+            api.getGoals()
+        ]);
+        transactions = txns || [];
+        budgets = bdgts || [];
+        goals = gls || [];
+    } catch (error) {
+        console.error('Error loading data:', error);
+        throw error;
+    }
+}
+
+function renderAll() {
+    renderTransactions();
+    renderBudgets();
+    renderGoals();
+    updateOverview();
+}
+
+function setTodayDate() {
+    const dateInput = document.getElementById('transactionDate');
+    if (dateInput) {
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.value = today;
+    }
+}
+
+// ==================== TRANSACTIONS ====================
+async function addTransaction(event) {
+    event.preventDefault();
+    
+    const transaction = {
+        type: document.getElementById('transactionType').value,
+        description: document.getElementById('transactionDescription').value,
+        amount: parseFloat(document.getElementById('transactionAmount').value),
+        category: document.getElementById('transactionCategory').value,
+            date: new Date(document.getElementById('transactionDate').value).toISOString(),
+        const saved = await api.createTransaction(transaction);
+        transactions.push(saved);
+        renderTransactions();
+        updateOverview();
+        closeModal('transaction');
+        event.target.reset();
+        setTodayDate();
+        hideLoading();
+        showMessage('Transaction added successfully!', 'success');
+    } catch (error) {
+        hideLoading();
+        showMessage('Failed to add transaction: ' + error.message, 'error');
+    }
+}
+
+async function deleteTransaction(id) {
+    if (!confirm('Are you sure you want to delete this transaction?')) return;
+    
+    try {
+        showLoading();
+        await api.deleteTransaction(id);
+        transactions = transactions.filter(t => t.id !== id);
+        renderTransactions();
+        updateOverview();
+        hideLoading();
+        showMessage('Transaction deleted successfully!', 'success');
+    } catch (error) {
+        hideLoading();
+        showMessage('Failed to delete transaction: ' + error.message, 'error');
+    }
+}
+
+function renderTransactions() {
+    const tbody = document.getElementById('transactionsTableBody');
+    if (!tbody) return;
+    
+    // Sort by date (newest first)
+    const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    // Pagination
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const paginated = sorted.slice(start, end);
+    
+    if (paginated.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;">No transactions found. Click "Add Transaction" to get started!</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = paginated.map(t => `
+        <tr>
+            <td>${new Date(t.date).toLocaleDateString()}</td>
+            <td>${t.description}</td>
+            <td><span class="badge badge-${t.type}">${t.type}</span></td>
+            <td>${t.category}</td>
+            <td class="${t.type === 'income' ? 'text-success' : 'text-danger'}">
+                ₹${t.amount.toLocaleString()}
+            </td>
+            <td>
+                <button onclick="deleteTransaction(${t.id})" class="btn-icon" title="Delete">🗑️</button>
+            </td>
+        </tr>
+    `).join('');
+    
+    updatePagination(sorted.length);
+}
+
+function updatePagination(totalItems) {
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const paginationDiv = document.getElementById('pagination');
+    if (!paginationDiv || totalPages <= 1) {
+        if (paginationDiv) paginationDiv.innerHTML = '';
+        return;
+    }
+    
+    paginationDiv.innerHTML = `
+        <button class="btn-icon" onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>←</button>
+        <span style="margin: 0 16px;">Page ${currentPage} of ${totalPages}</span>
+        <button class="btn-icon" onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>→</button>
+    `;
+}
+
+function changePage(newPage) {
+    currentPage = newPage;
+    renderTransactions();
+}
+
+// ==================== BUDGETS ====================
+async function addBudget(event) {
+    event.preventDefault();
+    
+    const budget = {
+        category: document.getElementById('budgetCategory').value,
+        limit: parseFloat(document.getElementById('budgetAmount').value)
+    };
+    
+    try {
+        showLoading();
+        const saved = await api.createBudget(budget);
+        budgets.push(saved);
+        renderBudgets();
+        updateOverview();
+        closeModal('budget');
+        event.target.reset();
+        hideLoading();
+        showMessage('Budget added successfully!', 'success');
+    } catch (error) {
+        hideLoading();
+        showMessage('Failed to add budget: ' + error.message, 'error');
+    }
+}
+
+function renderBudgets() {
+    const container = document.getElementById('budgetsList');
+    if (!container) return;
+    
+    if (budgets.length === 0) {
+        container.innerHTML = '<p style="text-align:center;padding:40px;color:var(--text-secondary);">No budgets set. Click "Add Budget" to create one!</p>';
+        return;
+    }
+    
+    // Calculate spending per category
+    const spending = {};
+    transactions.filter(t => t.type === 'expense').forEach(t => {
+        spending[t.category] = (spending[t.category] || 0) + t.amount;
+    });
+    
+    container.innerHTML = budgets.map(b => {
+        const spent = spending[b.category] || 0;
+        const percentage = Math.min((spent / b.limit) * 100, 100);
+        const isOver = spent > b.limit;
+        
+        return `
+            <div class="budget-item">
+                <div class="budget-header">
+                    <span class="budget-category">${b.category}</span>
+                    <span class="budget-amount">₹${spent.toLocaleString()} / ₹${b.limit.toLocaleString()}</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill ${isOver ? 'over-budget' : ''}" style="width: ${percentage}%"></div>
+                </div>
+                <div class="budget-footer">
+                    <span>${percentage.toFixed(0)}% used</span>
+                    ${isOver ? '<span class="text-danger">⚠️ Over budget!</span>' : '<span class="text-success">✓ On track</span>'}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ==================== GOALS ====================
+async function addGoal(event) {
+    event.preventDefault();
+    
+    const goal = {
+        name: document.getElementById('goalName').value,
+        target: parseFloat(document.getElementById('goalTarget').value),
+        current: parseFloat(document.getElementById('goalCurrent').value) || 0
+    };
+    
+    try {
+        showLoading();
+        const saved = await api.createGoal(goal);
+        goals.push(saved);
+        renderGoals();
+        closeModal('goal');
+        event.target.reset();
+        hideLoading();
+        showMessage('Goal added successfully!', 'success');
+    } catch (error) {
+        hideLoading();
+        showMessage('Failed to add goal: ' + error.message, 'error');
+    }
+}
+
+function renderGoals() {
+    const container = document.getElementById('goalsList');
+    if (!container) return;
+    
+    if (goals.length === 0) {
+        container.innerHTML = '<p style="text-align:center;padding:40px;color:var(--text-secondary);">No goals set. Click "Add Goal" to create one!</p>';
+        return;
+    }
+    
+    container.innerHTML = goals.map(g => {
+        const percentage = Math.min((g.current / g.target) * 100, 100);
+        const remaining = g.target - g.current;
+        
+        return `
+            <div class="goal-item">
+                <div class="goal-header">
+                    <span class="goal-name">${g.name}</span>
+                    <span class="goal-amount">₹${g.current.toLocaleString()} / ₹${g.target.toLocaleString()}</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${percentage}%"></div>
+                </div>
+                <div class="goal-footer">
+                    <span>${percentage.toFixed(0)}% complete</span>
+                    <span>${remaining > 0 ? '₹' + remaining.toLocaleString() + ' remaining' : '✓ Goal reached!'}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ==================== OVERVIEW ====================
+function updateOverview() {
+    const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const expenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const balance = income - expenses;
+    const savingsRate = income > 0 ? ((income - expenses) / income * 100) : 0;
+    
+    document.getElementById('totalBalance').textContent = `₹${balance.toLocaleString()}`;
+    document.getElementById('totalIncome').textContent = `₹${income.toLocaleString()}`;
+    document.getElementById('totalExpenses').textContent = `₹${expenses.toLocaleString()}`;
+    document.getElementById('savingsRate').textContent = `${savingsRate.toFixed(1)}%`;
+}
+
+// ==================== UI HELPERS ====================
+function showLoading() {
+    let loader = document.getElementById('loadingOverlay');
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'loadingOverlay';
+        loader.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
+        loader.innerHTML = '<div style="background:white;padding:24px 40px;border-radius:12px;font-size:18px;font-weight:600;box-shadow:0 20px 60px rgba(0,0,0,0.3);">Loading...</div>';
+        document.body.appendChild(loader);
+    }
+    loader.style.display = 'flex';
+}
+
+function hideLoading() {
+    const loader = document.getElementById('loadingOverlay');
+    if (loader) loader.style.display = 'none';
+}
+
+function showMessage(message, type = 'info') {
+    const msg = document.createElement('div');
+    msg.style.cssText = `position:fixed;top:20px;right:20px;padding:16px 24px;background:${type === 'success' ? '#10b981' : '#ef4444'};color:white;border-radius:10px;z-index:10000;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.2);`;
+    msg.textContent = message;
+    document.body.appendChild(msg);
+    setTimeout(() => {
+        msg.style.opacity = '0';
+        msg.style.transform = 'translateY(-20px)';
+        msg.style.transition = 'all 0.3s';
+        setTimeout(() => msg.remove(), 300);
+    }, 2700);
+}
+
+function openModal(type) {
+    const modal = document.getElementById(type + 'Modal');
+    if (modal) {
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+    }
+}
+
+function closeModal(type) {
+    const modal = document.getElementById(type + 'Modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+    }
+}
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    
+    document.getElementById(tab + 'Tab').classList.add('active');
+    event.target.classList.add('active');
+}
+
+// ==================== INITIALIZE ====================
+init();
+    </script>
+</body>
+</html>
