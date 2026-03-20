@@ -80,6 +80,28 @@ def ensure_transaction_recurring_column():
             print(f"[database] Warning: could not ensure recurring column in transactions: {e}")
 
 
+def ensure_transaction_spread_over_year_column():
+    """Ensure spread_over_year column exists on transactions table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(transactions)')).fetchall()]
+                if 'spread_over_year' not in columns:
+                    conn.execute(text('ALTER TABLE transactions ADD COLUMN spread_over_year BOOLEAN DEFAULT 0'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM transactions LIKE 'spread_over_year'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE transactions ADD COLUMN spread_over_year BOOLEAN DEFAULT FALSE'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='transactions' AND column_name='spread_over_year'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE transactions ADD COLUMN spread_over_year BOOLEAN DEFAULT FALSE'))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure spread_over_year column in transactions: {e}")
+
+
 def ensure_document_folder_columns():
     """Ensure folder and subfolder columns exist on documents table."""
     from sqlalchemy import text
@@ -240,4 +262,5 @@ def init_db():
     ensure_asset_income_column()
     ensure_integration_oauth_columns()
     ensure_transaction_recurring_column()
+    ensure_transaction_spread_over_year_column()
     ensure_document_folder_columns()

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FinApp - Login</title>
+    <link rel="icon" type="image/png" href="./assets/FinApp.png">
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * {
@@ -69,20 +70,14 @@
         .logo {
             display: inline-flex;
             align-items: center;
-            gap: 10px;
-            font-size: 48px;
-            font-weight: 700;
-            background: var(--gradient-primary);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            justify-content: center;
             margin-bottom: 8px;
         }
 
-        .logo svg {
-            width: 40px;
-            height: 40px;
-            flex-shrink: 0;
+        .logo img {
+            width: min(320px, 78vw);
+            height: auto;
+            display: block;
         }
 
         .tagline {
@@ -351,17 +346,7 @@
     <div class="auth-container">
         <div class="auth-header">
             <div class="logo">
-                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <defs>
-                        <linearGradient id="logoGradient" x1="0" y1="0" x2="1" y2="1">
-                            <stop offset="0%" stop-color="#3b82f6" />
-                            <stop offset="100%" stop-color="#2563eb" />
-                        </linearGradient>
-                    </defs>
-                    <circle cx="12" cy="12" r="10" fill="url(#logoGradient)" />
-                    <path d="M12 7.5c-1.5 0-2.5 1-2.5 2.5h1.5c0-.6.4-1 .9-1 .4 0 .9.2.9.8 0 .6-.5.8-1.3 1C10.2 12.4 9.5 12.7 9.5 13.5c0 .9.7 1.4 1.7 1.4 1.2 0 2-.8 2-2h-1.5c0 .4-.3.7-.6.7-.3 0-.6-.2-.6-.5 0-.4.4-.6 1.2-.9 1-.3 1.7-.7 1.7-1.6 0-1-1-1.5-1.9-1.5z" fill="#fff" />
-                </svg>
-                <span>FinApp</span>
+                <img src="./assets/FinApp.png" alt="FinApp" />
             </div>
             <div class="tagline">Track your finances with clarity</div>
         </div>

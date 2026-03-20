@@ -1,0 +1,14 @@
+section,id,name,type,description,value,amount,current_value,category,date,notes,recurring,source,lender,outstanding,interest_rate,monthly_payment,due_date,include_in_balance,include_in_income,limit,target,current,metric,metric_value
+transaction,11,,income,Salary,,100000.0,,Salary,2026-03-20T00:00:00,,true,,,,,,,,,,,,,
+transaction,12,,expense,Groceries,,50000.0,,Food,2026-03-20T00:00:00,,true,,,,,,,,,,,,,
+investment,4,SIP1,M1,,,100000.0,100000.0,,,,,,,,,,,,,,,,,
+liability,1,,,,,870000.0,,,,,,,Home Loan,600000.0,9.0,100000.0,2026-08-15T00:00:00,,,,,,,
+liability,2,,,,,1200000.0,,,,,,,Car Loan,400000.0,7.0,40000.0,2027-04-01T00:00:00,,,,,,,
+asset,1,Hosur House,,,10000000.0,,,,,,,,,,,,,false,false,,,,,
+asset,2,Hosur House,,,1000000.0,,,,,,,,,,,,,false,false,,,,,
+summary,,,,,,,,,,,,,,,,,,,,,,,income_total,100000.0
+summary,,,,,,,,,,,,,,,,,,,,,,,expense_total,50000.0
+summary,,,,,,,,,,,,,,,,,,,,,,,investment_total,100000.0
+summary,,,,,,,,,,,,,,,,,,,,,,,asset_total,11000000.0
+summary,,,,,,,,,,,,,,,,,,,,,,,liability_total,1000000.0
+summary,,,,,,,,,,,,,,,,,,,,,,,savings_total,150000.0

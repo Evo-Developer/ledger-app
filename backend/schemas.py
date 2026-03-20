@@ -58,6 +58,7 @@ class TransactionBase(BaseModel):
     category: str
     date: datetime
     recurring: Optional[bool] = False
+    spread_over_year: Optional[bool] = False
     notes: Optional[str] = None
 
 
@@ -72,6 +73,7 @@ class TransactionUpdate(BaseModel):
     category: Optional[str] = None
     date: Optional[datetime] = None
     recurring: Optional[bool] = None
+    spread_over_year: Optional[bool] = None
     notes: Optional[str] = None
 
 
@@ -79,6 +81,7 @@ class Transaction(TransactionBase):
     id: int
     user_id: int
     recurring: bool
+    spread_over_year: bool
     synced: bool
     source: Optional[str] = None
     created_at: datetime
@@ -350,6 +353,13 @@ class ExpenseReportEmailResponse(BaseModel):
 
 class IntegrationAuthUrlResponse(BaseModel):
     auth_url: str
+
+
+class DataImportResponse(BaseModel):
+    message: str
+    created: int
+    updated: int
+    skipped: int
 
 
 # Dashboard Stats

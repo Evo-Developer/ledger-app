@@ -120,6 +120,21 @@
             gap: 16px;
         }
 
+        .header-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        .header-status-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+
         .theme-toggle {
             background: var(--surface);
             color: var(--text);
@@ -148,15 +163,11 @@
             line-height: 1;
         }
 
-        h1 {
-            font-size: 36px;
-            font-weight: 700;
-            letter-spacing: -0.02em;
+        .app-logo {
+            width: min(320px, 52vw);
+            height: auto;
+            display: block;
             margin-bottom: 8px;
-            background: var(--gradient-primary);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
         }
 
         @keyframes slideDown {
@@ -173,6 +184,68 @@
         .subtitle {
             color: var(--text-secondary);
             font-size: 15px;
+        }
+
+        .header-user-line,
+        .header-backend-line {
+            color: var(--text-secondary);
+            font-size: 14px;
+            text-align: right;
+        }
+
+        .report-period-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin: 20px 0 28px;
+            padding: 16px 18px;
+            border-radius: 18px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+        }
+
+        body.dark-mode .report-period-bar {
+            background: var(--surface);
+        }
+
+        .report-period-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .report-period-label {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+
+        .report-period-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .report-period-subtle {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .report-period-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .report-period-controls .form-select {
+            min-width: 220px;
         }
 
         .grid {
@@ -320,6 +393,30 @@
             margin-bottom: 20px;
             flex-wrap: wrap;
             gap: 12px;
+        }
+
+        .list-toggle-row {
+            display: flex;
+            justify-content: center;
+            margin-top: 16px;
+        }
+
+        .list-toggle-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 999px;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .list-toggle-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
         }
 
         .section-title {
@@ -1231,8 +1328,30 @@
                 align-items: stretch;
             }
 
+            .header-meta,
+            .header-status-stack {
+                align-items: flex-start;
+            }
+
+            .header-user-line,
+            .header-backend-line {
+                text-align: left;
+            }
+
             .grid {
                 grid-template-columns: 1fr;
+            }
+
+            .report-period-bar {
+                align-items: flex-start;
+            }
+
+            .report-period-controls {
+                width: 100%;
+            }
+
+            .report-period-controls .form-select {
+                width: 100%;
             }
 
             .form-row {
@@ -1288,16 +1407,33 @@
         <header>
             <div class="header-row">
                 <div>
-                    <h1>FinApp</h1>
-                    <p class="subtitle">Track your finances with clarity ✨ • Database-backed with full audit trail 🛡️</p>
-                    <p class="subtitle" id="backendStatus" style="font-size:13px; opacity:0.85; margin-top: 4px;">Checking backend…</p>
+                    <img src="./assets/FinApp.png" alt="FinApp" class="app-logo" id="appHeaderLogo" />
+                    <p class="subtitle">Track your finances with clarity ✨</p>
                 </div>
-                <button class="theme-toggle" id="themeToggle" type="button" onclick="toggleTheme()">
-                    <span class="theme-toggle-icon" id="themeToggleIcon">🌙</span>
-                    <span id="themeToggleLabel">Dark Mode</span>
-                </button>
+                <div class="header-meta">
+                    <button class="theme-toggle" id="themeToggle" type="button" onclick="toggleTheme()">
+                        <span class="theme-toggle-icon" id="themeToggleIcon">🌙</span>
+                        <span id="themeToggleLabel">Dark Mode</span>
+                    </button>
+                    <div class="header-status-stack">
+                        <p class="header-user-line" id="headerUserDisplay">Welcome</p>
+                        <p class="header-backend-line" id="backendStatus">Checking backend…</p>
+                    </div>
+                </div>
             </div>
         </header>
+
+        <div class="report-period-bar">
+            <div class="report-period-copy">
+                <span class="report-period-label">📅 Today</span>
+                <div class="report-period-value" id="currentDateDisplay">--</div>
+                <div class="report-period-subtle">🗓️ Viewing reports for <span id="selectedMonthDisplay">--</span></div>
+            </div>
+            <div class="report-period-controls">
+                <label class="form-label" for="reportMonthSelect" style="margin: 0;">Report month</label>
+                <select class="form-select" id="reportMonthSelect" onchange="handleReportMonthChange(event)"></select>
+            </div>
+        </div>
 
         <!-- Overview Cards -->
         <div class="grid">
@@ -1367,6 +1503,11 @@
                     <button class="btn btn-info" onclick="syncAllApps()">
                         <span id="syncIcon">🔄</span> Sync All
                     </button>
+                    <button class="btn btn-warning" onclick="exportFullLedgerCsv()">📥 Export Full CSV</button>
+                    <label class="btn btn-secondary" style="margin-bottom:0;">
+                        📤 Import Full CSV
+                        <input type="file" id="fullLedgerCsvUpload" accept=".csv" onchange="handleFullLedgerCsvUpload(event)" style="display: none;" />
+                    </label>
                     <label class="btn btn-secondary" style="margin-bottom:0;">
                         📁 Upload CSV
                         <input type="file" id="transactionCsvUpload" accept=".csv" onchange="handleTransactionCsvUpload(event)" style="display: none;" />
@@ -1446,6 +1587,7 @@
 
             <div id="syncStatus"></div>
             <div class="transaction-list" id="transactionList"></div>
+            <div class="list-toggle-row" id="transactionListToggle"></div>
             <div id="transactionPagination"></div>
         </div>
 
@@ -1456,6 +1598,7 @@
                 <button class="btn" onclick="openModal('budget')">+ Add Budget 🧾</button>
             </div>
             <div id="budgetList"></div>
+            <div class="list-toggle-row" id="budgetListToggle"></div>
         </div>
 
         <!-- Goals Section -->
@@ -1465,6 +1608,7 @@
                 <button class="btn" onclick="openModal('goal')">+ Add Goal ✨</button>
             </div>
             <div id="goalList"></div>
+            <div class="list-toggle-row" id="goalListToggle"></div>
         </div>
 
         <!-- Investments Section -->
@@ -1474,6 +1618,7 @@
                 <button class="btn" onclick="openModal('investment')">+ Add Investment 💼</button>
             </div>
             <div id="investmentList"></div>
+            <div class="list-toggle-row" id="investmentListToggle"></div>
         </div>
 
         <!-- Liabilities Section -->
@@ -1483,6 +1628,7 @@
                 <button class="btn" onclick="openModal('liability')">+ Add Liability 📝</button>
             </div>
             <div id="liabilityList"></div>
+            <div class="list-toggle-row" id="liabilityListToggle"></div>
         </div>
 
         <!-- Assets Section -->
@@ -1492,6 +1638,7 @@
                 <button class="btn" onclick="openModal('asset')">+ Add Asset</button>
             </div>
             <div id="assetList"></div>
+            <div class="list-toggle-row" id="assetListToggle"></div>
         </div>
 
         <!-- Documents Section -->
@@ -1501,6 +1648,7 @@
                 <button class="btn" onclick="openModal('document')">+ Upload Document</button>
             </div>
             <div id="documentList"></div>
+            <div class="list-toggle-row" id="documentListToggle"></div>
         </div>
 
         <!-- Insights Section -->
@@ -1658,6 +1806,7 @@
                 <h2 class="section-title">Users & Roles 👥</h2>
             </div>
             <div id="userList"></div>
+            <div class="list-toggle-row" id="userListToggle"></div>
         </div>
 
         <!-- Audit Trail Section -->
@@ -1757,6 +1906,8 @@
                         <select class="form-select" id="transactionCategory" required onchange="handleCategorySelect(event, 'transaction')">
                             <option value="Food">Food</option>
                             <option value="Transport">Transport</option>
+                            <option value="School Fees">School Fees</option>
+                            <option value="Bus Fees">Bus Fees</option>
                             <option value="Shopping">Shopping</option>
                             <option value="Entertainment">Entertainment</option>
                             <option value="Bills">Bills</option>
@@ -1778,6 +1929,10 @@
                 <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="transactionRecurring" style="width: auto; margin: 0;" />
                     <label for="transactionRecurring" class="form-label" style="margin: 0;">Recurring transaction</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: flex-start; gap: 8px;">
+                    <input type="checkbox" id="transactionSpreadOverYear" style="width: auto; margin-top: 2px;" />
+                    <label for="transactionSpreadOverYear" class="form-label" style="margin: 0;">Spread this amount across 12 months in monthly calculations</label>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Notes (Optional)</label>
@@ -2318,9 +2473,16 @@
                 : 'light';
         }
 
+        function updateAppLogoForTheme(theme) {
+            const logoEl = document.getElementById('appHeaderLogo');
+            if (!logoEl) return;
+            logoEl.src = theme === 'dark' ? './assets/FinAppBlue.png' : './assets/FinApp.png';
+        }
+
         function applyTheme(theme) {
             document.body.setAttribute('data-theme', theme);
             localStorage.setItem(THEME_STORAGE_KEY, theme);
+            updateAppLogoForTheme(theme);
 
             const iconEl = document.getElementById('themeToggleIcon');
             const labelEl = document.getElementById('themeToggleLabel');
@@ -2400,12 +2562,14 @@
 
         // Update user display in header
         function updateUserDisplay() {
-            const userDisplay = document.querySelector('.subtitle');
+            const userDisplay = document.getElementById('headerUserDisplay');
             if (userDisplay && currentUser) {
+                const formattedRole = currentUser.role
+                    ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1)
+                    : 'User';
                 userDisplay.innerHTML = `
                     Welcome, <strong>${currentUser.full_name || currentUser.username}</strong> 
-                    (<span style="color: var(--text-secondary);">${currentUser.email}</span>) •
-                    <span style="color: var(--accent); font-weight: 700; text-transform: uppercase;">${currentUser.role}</span>
+                    <span style="color: var(--accent); font-weight: 700;">(${formattedRole})</span>
                     • <a href="#" onclick="logout()" style="color: var(--accent); text-decoration: none;">Logout</a>
                 `;
             }
@@ -2467,7 +2631,7 @@
         let integrations = {};
         let auditLog = [];
 
-        const DEFAULT_CATEGORIES = ['Food', 'Transport', 'Shopping', 'Entertainment', 'Bills', 'Health', 'Salary', 'Investment'];
+        const DEFAULT_CATEGORIES = ['Food', 'Transport', 'School Fees', 'Bus Fees', 'Shopping', 'Entertainment', 'Bills', 'Health', 'Salary', 'Investment'];
         let categoryOptions = new Set([...DEFAULT_CATEGORIES]);
         let expenseChart = null;
         let currentIntegration = null;
@@ -2476,6 +2640,27 @@
         let currentPage = 1;
         let itemsPerPage = 20;
         let currentAuditPage = 1;
+        let selectedReportMonth = new Date().toISOString().slice(0, 7);
+        const LIST_COLLAPSE_LIMITS = {
+            transactions: 5,
+            budgets: 4,
+            goals: 4,
+            investments: 4,
+            liabilities: 4,
+            assets: 4,
+            documents: 4,
+            users: 4
+        };
+        let collapsedLists = {
+            transactions: true,
+            budgets: true,
+            goals: true,
+            investments: true,
+            liabilities: true,
+            assets: true,
+            documents: true,
+            users: true
+        };
 
         // Database operations with audit logging
         class Database {
@@ -2662,6 +2847,8 @@
         const categoryConfig = {
             Food: { icon: '🍔', color: '#dbeafe' },
             Transport: { icon: '🚗', color: '#e0e7ff' },
+            'School Fees': { icon: '🎒', color: '#fee2e2' },
+            'Bus Fees': { icon: '🚌', color: '#fef3c7' },
             Shopping: { icon: '🛍️', color: '#fce7f3' },
             Entertainment: { icon: '🎬', color: '#f3e8ff' },
             Bills: { icon: '📄', color: '#fef3c7' },
@@ -2678,6 +2865,164 @@
 
         function formatSignedCurrency(amount) {
             return amount < 0 ? `-${formatCurrency(amount)}` : formatCurrency(amount);
+        }
+
+        function getAnnualizedReturnPercent(investedAmount, currentValue, startDate) {
+            const principal = parseFloat(investedAmount);
+            const current = parseFloat(currentValue);
+            const startedAt = startDate ? new Date(startDate) : null;
+
+            if (!Number.isFinite(principal) || principal <= 0 || !Number.isFinite(current) || !startedAt || Number.isNaN(startedAt.getTime())) {
+                return null;
+            }
+
+            const now = new Date();
+            const daysHeld = Math.max((now - startedAt) / (1000 * 60 * 60 * 24), 1);
+            const yearsHeld = daysHeld / 365.25;
+
+            if (yearsHeld <= 0 || current <= 0) {
+                return null;
+            }
+
+            return ((Math.pow(current / principal, 1 / yearsHeld) - 1) * 100);
+        }
+
+        function formatCurrentDate(date = new Date()) {
+            return date.toLocaleDateString('en-IN', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+            });
+        }
+
+        function formatMonthLabel(monthValue) {
+            if (!monthValue) return '--';
+            const [year, month] = monthValue.split('-').map(Number);
+            return new Date(year, month - 1, 1).toLocaleDateString('en-IN', {
+                month: 'long',
+                year: 'numeric'
+            });
+        }
+
+        function getSelectedReportDate() {
+            const [year, month] = (selectedReportMonth || new Date().toISOString().slice(0, 7)).split('-').map(Number);
+            return new Date(year, month - 1, 1);
+        }
+
+        function getSelectedReportMonthIndex() {
+            const date = getSelectedReportDate();
+            return (date.getFullYear() * 12) + date.getMonth();
+        }
+
+        function refreshReportPeriodDisplay() {
+            const todayEl = document.getElementById('currentDateDisplay');
+            const monthEl = document.getElementById('selectedMonthDisplay');
+            const selectEl = document.getElementById('reportMonthSelect');
+
+            if (todayEl) todayEl.textContent = formatCurrentDate(new Date());
+            if (monthEl) monthEl.textContent = formatMonthLabel(selectedReportMonth);
+            if (selectEl) selectEl.value = selectedReportMonth;
+        }
+
+        function populateReportMonthOptions() {
+            const selectEl = document.getElementById('reportMonthSelect');
+            if (!selectEl) return;
+
+            const monthSet = new Set();
+            const current = new Date();
+
+            for (let offset = -12; offset <= 12; offset += 1) {
+                const date = new Date(current.getFullYear(), current.getMonth() + offset, 1);
+                monthSet.add(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+            }
+
+            transactions.forEach((transaction) => {
+                if (!transaction?.date) return;
+                const tDate = new Date(transaction.date);
+                if (Number.isNaN(tDate.getTime())) return;
+
+                const monthsToInclude = transaction.spread_over_year ? 12 : 1;
+                for (let offset = 0; offset < monthsToInclude; offset += 1) {
+                    const date = new Date(tDate.getFullYear(), tDate.getMonth() + offset, 1);
+                    monthSet.add(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+                }
+            });
+
+            const options = Array.from(monthSet).sort().reverse();
+            if (!monthSet.has(selectedReportMonth)) {
+                selectedReportMonth = options[0] || new Date().toISOString().slice(0, 7);
+            }
+
+            selectEl.innerHTML = options.map((monthValue) => `
+                <option value="${monthValue}">${formatMonthLabel(monthValue)}</option>
+            `).join('');
+
+            refreshReportPeriodDisplay();
+        }
+
+        function handleReportMonthChange(event) {
+            selectedReportMonth = event.target.value;
+            refreshReportPeriodDisplay();
+            currentPage = 1;
+            updateOverview();
+            renderTransactions();
+            renderBudgets();
+            renderGoals();
+            renderInsights();
+        }
+
+        function getVisibleListItems(items, key) {
+            const limit = LIST_COLLAPSE_LIMITS[key] || 5;
+            const total = items.length;
+            const collapsed = collapsedLists[key] !== false;
+
+            return {
+                items: collapsed && total > limit ? items.slice(0, limit) : items,
+                total,
+                limit,
+                collapsed,
+                hasToggle: total > limit
+            };
+        }
+
+        function renderListToggle(toggleId, key, total, noun = 'items') {
+            const el = document.getElementById(toggleId);
+            if (!el) return;
+
+            const limit = LIST_COLLAPSE_LIMITS[key] || 5;
+            const collapsed = collapsedLists[key] !== false;
+
+            if (total <= limit) {
+                el.innerHTML = '';
+                return;
+            }
+
+            const buttonText = collapsed
+                ? `Expand ${total} ${noun}`
+                : `Collapse to ${limit} ${noun}`;
+
+            el.innerHTML = `<button type="button" class="list-toggle-btn" onclick="toggleListVisibility('${key}')">${buttonText}</button>`;
+        }
+
+        function toggleListVisibility(key) {
+            collapsedLists[key] = !(collapsedLists[key] !== false);
+
+            const renderers = {
+                transactions: renderTransactions,
+                budgets: renderBudgets,
+                goals: renderGoals,
+                investments: renderInvestments,
+                liabilities: renderLiabilities,
+                assets: renderAssets,
+                documents: renderDocuments,
+                users: renderUsers
+            };
+
+            const rerender = renderers[key];
+            if (typeof rerender === 'function') {
+                rerender();
+            }
         }
 
         function setAdaptiveCardValue(elementId, value) {
@@ -2711,6 +3056,10 @@
             return investments.reduce((sum, inv) => sum + (parseFloat(inv.current_value ?? inv.amount_invested ?? 0) || 0), 0);
         }
 
+        function getInvestmentPrincipalValue() {
+            return investments.reduce((sum, inv) => sum + (parseFloat(inv.amount_invested ?? 0) || 0), 0);
+        }
+
         function getIncludedAssetsValue() {
             return assets
                 .filter(asset => asset.include_in_balance !== false)
@@ -2738,8 +3087,12 @@
                 .reduce((sum, t) => sum + t.amount, 0);
             const totalLiabilities = liabilities
                 .reduce((sum, l) => sum + (parseFloat(l.outstanding ?? l.amount ?? 0) || 0), 0);
-            const totalInvested = investments
-                .reduce((sum, inv) => sum + (parseFloat(inv.amount_invested ?? 0) || 0), 0);
+            const totalInvestmentPrincipal = getInvestmentPrincipalValue();
+            const totalInvested = getInvestmentPortfolioValue();
+            const investmentGainLoss = totalInvested - totalInvestmentPrincipal;
+            const investmentGainLossPercent = totalInvestmentPrincipal > 0
+                ? (investmentGainLoss / totalInvestmentPrincipal) * 100
+                : null;
             const totalAssetsValue = getTrackedAssetsValue();
             const includedAssetsValue = getIncludedAssetsValue();
             const totalIncomeAssets = getIncomeEligibleAssetsValue();
@@ -2754,7 +3107,10 @@
                 expenses,
                 savings,
                 totalLiabilities,
+                totalInvestmentPrincipal,
                 totalInvested,
+                investmentGainLoss,
+                investmentGainLossPercent,
                 totalAssetsValue,
                 includedAssetsValue,
                 totalIncomeAssets,
@@ -2774,13 +3130,25 @@
         }
 
         function getCurrentMonthTransactions() {
-            const now = new Date();
-            const currentMonth = now.getMonth();
-            const currentYear = now.getFullYear();
-            
-            return transactions.filter(t => {
+            const currentMonthIndex = getSelectedReportMonthIndex();
+
+            return transactions.flatMap(t => {
                 const tDate = new Date(t.date);
-                return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
+                const transactionMonthIndex = (tDate.getFullYear() * 12) + tDate.getMonth();
+                const monthOffset = currentMonthIndex - transactionMonthIndex;
+                const sameMonth = monthOffset === 0;
+                const spreadOverYear = t.spread_over_year === true;
+
+                if (spreadOverYear && monthOffset >= 0 && monthOffset < 12) {
+                    return [{
+                        ...t,
+                        amount: (parseFloat(t.amount) || 0) / 12,
+                        monthlyized: true,
+                        originalAmount: parseFloat(t.amount) || 0
+                    }];
+                }
+
+                return sameMonth ? [t] : [];
             });
         }
 
@@ -2913,12 +3281,17 @@
 
         // Update overview
         function updateOverview() {
+            populateReportMonthOptions();
+
             const {
                 income,
                 expenses,
                 savings,
                 totalLiabilities,
+                totalInvestmentPrincipal,
                 totalInvested,
+                investmentGainLoss,
+                investmentGainLossPercent,
                 totalAssetsValue,
                 includedAssetsValue,
                 netBalance,
@@ -2927,6 +3300,7 @@
             const monthlySavings = income - expenses;
             const savingsRate = income > 0 ? ((monthlySavings / income) * 100).toFixed(0) : 0;
             const liabilityCover = totalLiabilities > 0 ? ((savings / totalLiabilities) * 100).toFixed(0) : '—';
+            const selectedMonthLabel = formatMonthLabel(selectedReportMonth);
             document.getElementById('balanceChange').textContent = 'Selected assets + savings - liabilities';
 
             setAdaptiveCardValue('totalBalance', formatSignedCurrency(netBalance));
@@ -2934,7 +3308,7 @@
             setAdaptiveCardValue('totalIncome', formatCurrency(income));
             setCardValueTone('totalIncome', income < 0 ? 'negative' : 'positive');
             setAdaptiveCardValue('totalInvested', formatCurrency(totalInvested));
-            setCardValueTone('totalInvested', totalInvested < 0 ? 'negative' : 'positive');
+            setCardValueTone('totalInvested', investmentGainLoss < 0 ? 'negative' : 'positive');
             setAdaptiveCardValue('totalAssetsValue', formatCurrency(totalAssetsValue));
             setCardValueTone('totalAssetsValue', totalAssetsValue < 0 ? 'negative' : 'positive');
             setAdaptiveCardValue('totalSavings', formatSignedCurrency(savings));
@@ -2945,6 +3319,11 @@
             setCardValueTone('totalLiabilities', 'negative');
             setAdaptiveCardValue('savingsRate', savingsRate + '%');
             setCardValueTone('savingsRate', monthlySavings < 0 ? 'negative' : 'positive');
+            document.getElementById('incomeChange').textContent = selectedMonthLabel;
+            document.getElementById('expensesChange').textContent = selectedMonthLabel;
+            document.getElementById('investedChange').textContent = totalInvestmentPrincipal > 0
+                ? `${investmentGainLoss >= 0 ? '📈 Profit' : '📉 Loss'} ${Math.abs(investmentGainLossPercent).toFixed(1)}%`
+                : 'Portfolio';
             document.getElementById('savingsLiabilityRatio').textContent = `Liability cover: ${liabilityCover === '—' ? '—' : liabilityCover + '%'} `;
 
         }
@@ -2964,6 +3343,7 @@
                     </div>
                 `;
                 paginationDiv.innerHTML = '';
+                renderListToggle('transactionListToggle', 'transactions', 0, 'transactions');
                 return;
             }
 
@@ -2972,8 +3352,9 @@
             const startIdx = (currentPage - 1) * itemsPerPage;
             const endIdx = startIdx + itemsPerPage;
             const pageItems = sorted.slice(startIdx, endIdx);
+            const visibleItemsMeta = getVisibleListItems(pageItems, 'transactions');
 
-            list.innerHTML = pageItems.map((t) => {
+            list.innerHTML = visibleItemsMeta.items.map((t) => {
                 const config = categoryConfig[t.category] || categoryConfig.Other;
                 const syncBadge = t.synced ? '<span class="sync-badge">SYNCED</span>' : '';
                 return `
@@ -2988,6 +3369,7 @@
                                 <div class="transaction-meta">
                                     <span>${t.category}</span>
                                     ${t.recurring ? '<span>•</span><span style="color: var(--accent); font-weight: 600;">♻️ Recurring</span>' : ''}
+                                    ${t.spread_over_year ? '<span>•</span><span style="color: var(--success); font-weight: 600;">🗓️ Monthlyized</span>' : ''}
                                     <span>•</span>
                                     <span>${new Date(t.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                     ${t.source ? `<span>•</span><span>${t.source}</span>` : ''}
@@ -3009,6 +3391,7 @@
                     </div>
                 `;
             }).join('');
+            renderListToggle('transactionListToggle', 'transactions', pageItems.length, 'transactions');
 
             // Render pagination
             if (totalPages > 1) {
@@ -3065,6 +3448,7 @@
                 category,
                 date: document.getElementById('transactionDate').value,
                 recurring: document.getElementById('transactionRecurring').checked,
+                spread_over_year: document.getElementById('transactionSpreadOverYear').checked,
                 notes: document.getElementById('transactionNotes').value
             };
 
@@ -3157,6 +3541,76 @@
             }
         }
 
+        async function exportFullLedgerCsv() {
+            try {
+                const blob = typeof api.exportAllDataCsv === 'function'
+                    ? await api.exportAllDataCsv()
+                    : await fetch(`${window.location.origin}/api/data/export-csv`, {
+                        headers: localStorage.getItem('token')
+                            ? { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                            : {}
+                    }).then(async (response) => {
+                        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+                        return response.blob();
+                    });
+
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `ledger-export-${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                showNotification('Full Ledger CSV exported successfully.', 'success');
+            } catch (error) {
+                console.error('❌ Full CSV export error:', error);
+                showNotification('Failed to export full CSV: ' + error.message, 'error');
+            }
+        }
+
+        async function handleFullLedgerCsvUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const result = typeof api.importAllDataCsv === 'function'
+                    ? await api.importAllDataCsv(file)
+                    : await (() => {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        return fetch(`${window.location.origin}/api/data/import-csv`, {
+                            method: 'POST',
+                            headers: localStorage.getItem('token')
+                                ? { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                                : {},
+                            body: formData
+                        }).then(async (response) => {
+                            const data = await response.json();
+                            if (!response.ok) throw new Error(data.detail || `${response.status} ${response.statusText}`);
+                            return data;
+                        });
+                    })();
+
+                await Database.load();
+                renderTransactions();
+                renderBudgets();
+                renderGoals();
+                renderInvestments();
+                renderLiabilities();
+                renderAssets();
+                updateOverview();
+                updateIntegrationUI();
+
+                showNotification(`Full CSV imported. Created: ${result.created}, Updated: ${result.updated}, Skipped: ${result.skipped}.`, 'success');
+            } catch (error) {
+                console.error('❌ Full CSV import error:', error);
+                showNotification('Failed to import full CSV: ' + error.message, 'error');
+            } finally {
+                event.target.value = '';
+            }
+        }
+
         function editTransaction(id) {
             const transaction = transactions.find(t => t.id == id);
             if (!transaction || transaction.synced) return;
@@ -3184,6 +3638,7 @@
 
             document.getElementById('transactionDate').value = transaction.date ? transaction.date.split('T')[0] : '';
             document.getElementById('transactionRecurring').checked = !!transaction.recurring;
+            document.getElementById('transactionSpreadOverYear').checked = !!transaction.spread_over_year;
             document.getElementById('transactionNotes').value = transaction.notes || '';
 
             openModal('transaction');
@@ -3337,12 +3792,14 @@
                         <p>No budgets set. Create a budget to track your spending!</p>
                     </div>
                 `;
+                renderListToggle('budgetListToggle', 'budgets', 0, 'budgets');
                 return;
             }
 
             const monthTransactions = getCurrentMonthTransactions();
+            const visibleItemsMeta = getVisibleListItems(budgets, 'budgets');
             
-            list.innerHTML = budgets.map(budget => {
+            list.innerHTML = visibleItemsMeta.items.map(budget => {
                 const spent = monthTransactions
                     .filter(t => t.type === 'expense' && t.category === budget.category)
                     .reduce((sum, t) => sum + t.amount, 0);
@@ -3366,6 +3823,7 @@
                     </div>
                 `;
             }).join('');
+            renderListToggle('budgetListToggle', 'budgets', budgets.length, 'budgets');
         }
 
         // Goal operations
@@ -3451,10 +3909,13 @@
                         <p>No savings goals yet. Set a goal to start saving!</p>
                     </div>
                 `;
+                renderListToggle('goalListToggle', 'goals', 0, 'goals');
                 return;
             }
 
-            list.innerHTML = goals.map(goal => {
+            const visibleItemsMeta = getVisibleListItems(goals, 'goals');
+
+            list.innerHTML = visibleItemsMeta.items.map(goal => {
                 const percentage = Math.min((goal.current / goal.target) * 100, 100);
                 const isComplete = goal.current >= goal.target;
                 const suggestion = getGoalSuggestion(goal);
@@ -3482,6 +3943,7 @@
                     </div>
                 `;
             }).join('');
+            renderListToggle('goalListToggle', 'goals', goals.length, 'goals');
         }
 
         function editGoal(id) {
@@ -3526,10 +3988,13 @@
                         <p>No assets tracked yet. Add one to stay organized.</p>
                     </div>
                 `;
+                renderListToggle('assetListToggle', 'assets', 0, 'assets');
                 return;
             }
 
-            list.innerHTML = assets.map(asset => `
+            const visibleItemsMeta = getVisibleListItems(assets, 'assets');
+
+            list.innerHTML = visibleItemsMeta.items.map(asset => `
                 <div class="goal-item">
                     <div class="goal-header">
                         <div class="goal-info">
@@ -3553,6 +4018,7 @@
                     </div>
                 </div>
             `).join('');
+            renderListToggle('assetListToggle', 'assets', assets.length, 'assets');
         }
 
         function resetAssetModal() {
@@ -3571,11 +4037,17 @@
         async function saveAsset(e, explicitUpdate = false) {
             e.preventDefault();
 
+            const parsedValue = parseFloat(document.getElementById('assetValue').value);
+            if (!Number.isFinite(parsedValue)) {
+                showNotification('Please enter a valid asset value before saving.', 'error');
+                return;
+            }
+
             const assetId = document.getElementById('assetId').value;
             const payload = {
                 name: document.getElementById('assetName').value,
                 type: document.getElementById('assetType').value,
-                value: parseFloat(document.getElementById('assetValue').value),
+                value: parsedValue,
                 include_in_balance: document.getElementById('assetIncludeInBalance').checked,
                 include_in_income: document.getElementById('assetIncludeInIncome').checked,
                 description: document.getElementById('assetDescription').value || ''
@@ -3656,6 +4128,7 @@
                         <p>No documents uploaded. Add important documents here.</p>
                     </div>
                 `;
+                renderListToggle('documentListToggle', 'documents', 0, 'folders');
                 return;
             }
 
@@ -3672,7 +4145,10 @@
                 groupedDocuments[folder][subfolder].push(doc);
             });
 
-            list.innerHTML = Object.entries(groupedDocuments).map(([folder, subfolders]) => `
+            const groupedEntries = Object.entries(groupedDocuments);
+            const visibleItemsMeta = getVisibleListItems(groupedEntries, 'documents');
+
+            list.innerHTML = visibleItemsMeta.items.map(([folder, subfolders]) => `
                 <div class="goal-item">
                     <div class="goal-header">
                         <div class="goal-info">
@@ -3703,6 +4179,7 @@
                     `).join('')}
                 </div>
             `).join('');
+            renderListToggle('documentListToggle', 'documents', groupedEntries.length, 'folders');
         }
 
         function updateDocumentFolderOptions() {
@@ -3771,15 +4248,30 @@
                         <p>No investments tracked. Add an investment to begin.</p>
                     </div>
                 `;
+                renderListToggle('investmentListToggle', 'investments', 0, 'investments');
                 return;
             }
 
-            list.innerHTML = investments.map(inv => {
+            const visibleItemsMeta = getVisibleListItems(investments, 'investments');
+
+            list.innerHTML = visibleItemsMeta.items.map(inv => {
                 const gain = inv.current_value !== null && inv.current_value !== undefined
                     ? inv.current_value - inv.amount_invested
                     : null;
                 const gainLabel = gain === null ? '' : `${gain >= 0 ? '+' : '-'}${formatCurrency(Math.abs(gain))}`;
                 const gainClass = gain === null ? '' : (gain >= 0 ? 'positive' : 'negative');
+                const annualizedReturn = inv.current_value !== null && inv.current_value !== undefined
+                    ? getAnnualizedReturnPercent(inv.amount_invested, inv.current_value, inv.createdAt || inv.created_at)
+                    : null;
+                const gainText = gain === null
+                    ? 'Current value not set'
+                    : gain >= 0
+                        ? `📈 Profit: ${gainLabel}`
+                        : `📉 Loss: ${gainLabel}`;
+                const annualizedText = annualizedReturn === null
+                    ? '⏳ Annual return: --'
+                    : `${annualizedReturn >= 0 ? '📊 Annual return' : '📉 Annual return'}: ${annualizedReturn.toFixed(1)}%`;
+                const annualizedClass = annualizedReturn === null ? '' : (annualizedReturn >= 0 ? 'positive' : 'negative');
 
                 return `
                     <div class="goal-item">
@@ -3790,7 +4282,9 @@
                             </div>
                             <div class="goal-progress-text">
                                 <div class="goal-current">Invested: ${formatCurrency(inv.amount_invested)}</div>
-                                <div class="goal-percentage ${gainClass}">Value: ${inv.current_value != null ? formatCurrency(inv.current_value) : '--'} ${gainLabel ? `(${gainLabel})` : ''}</div>
+                                <div class="goal-percentage ${gainClass}">Value: ${inv.current_value != null ? formatCurrency(inv.current_value) : '--'}</div>
+                                <div class="goal-percentage ${gainClass}">${gainText}</div>
+                                <div class="goal-percentage ${annualizedClass}">${annualizedText}</div>
                             </div>
                         </div>
                         ${inv.notes ? `<p style="margin-top: 10px; color: var(--text-secondary);">${inv.notes}</p>` : ''}
@@ -3801,6 +4295,7 @@
                     </div>
                 `;
             }).join('');
+            renderListToggle('investmentListToggle', 'investments', investments.length, 'investments');
         }
 
         function resetInvestmentModal() {
@@ -3923,10 +4418,13 @@
                         <p>No liabilities tracked. Add a loan or credit obligation to track.</p>
                     </div>
                 `;
+                renderListToggle('liabilityListToggle', 'liabilities', 0, 'liabilities');
                 return;
             }
 
-            list.innerHTML = liabilities.map(lib => {
+            const visibleItemsMeta = getVisibleListItems(liabilities, 'liabilities');
+
+            list.innerHTML = visibleItemsMeta.items.map(lib => {
                 return `
                     <div class="goal-item">
                         <div class="goal-header">
@@ -3948,6 +4446,7 @@
                     </div>
                 `;
             }).join('');
+            renderListToggle('liabilityListToggle', 'liabilities', liabilities.length, 'liabilities');
         }
 
         async function addLiability(e) {
@@ -4397,10 +4896,13 @@
                         <p>Only admins can manage user roles.</p>
                     </div>
                 `;
+                renderListToggle('userListToggle', 'users', 0, 'users');
                 return;
             }
 
-            list.innerHTML = users.map(user => `
+            const visibleItemsMeta = getVisibleListItems(users, 'users');
+
+            list.innerHTML = visibleItemsMeta.items.map(user => `
                 <div class="goal-item">
                     <div class="goal-header" style="align-items: center; gap: 16px;">
                         <div class="goal-info">
@@ -4430,6 +4932,7 @@
                     </div>
                 </div>
             `).join('');
+            renderListToggle('userListToggle', 'users', users.length, 'users');
         }
 
         async function updateUserRoleAction(userId) {
@@ -4642,6 +5145,7 @@
                     document.getElementById('transactionCategoryCustom').value = '';
                     document.getElementById('transactionCategoryCustomGroup').style.display = 'none';
                     document.getElementById('transactionRecurring').checked = false;
+                    document.getElementById('transactionSpreadOverYear').checked = false;
                 } else {
                     document.getElementById('transactionModalTitle').textContent = 'Edit Transaction';
                     document.getElementById('transactionSaveBtn').style.display = 'none';
@@ -4675,7 +5179,7 @@
                 updateDocumentFolderOptions();
             } else if (type === 'expenseReport') {
                 document.getElementById('expenseReportEmail').value = currentUser?.email || '';
-                document.getElementById('expenseReportMonth').value = new Date().toISOString().slice(0, 7);
+                document.getElementById('expenseReportMonth').value = selectedReportMonth;
                 document.getElementById('expenseReportSendBtn').disabled = false;
                 document.getElementById('expenseReportSendBtn').textContent = 'Send Report';
                 updateExpenseReportGmailStatus();
@@ -4692,6 +5196,7 @@
                 document.getElementById('transactionNotes').value = '';
                 document.getElementById('transactionCategoryCustom').value = '';
                 document.getElementById('transactionCategoryCustomGroup').style.display = 'none';
+                document.getElementById('transactionSpreadOverYear').checked = false;
             } else if (type === 'investment') {
                 resetInvestmentModal();
             } else if (type === 'liability') {
@@ -5394,6 +5899,8 @@
 
                 await Database.init();
                 await Database.load();
+                populateReportMonthOptions();
+                refreshReportPeriodDisplay();
                 updateRoleAwareUI();
                 await loadUsers();
 

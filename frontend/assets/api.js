@@ -455,6 +455,31 @@ class API {
             }),
         });
     }
+
+    async exportAllDataCsv() {
+        const response = await fetch(`${this.getApiBaseUrl()}/data/export-csv`, {
+            method: 'GET',
+            headers: this.getHeaders(),
+        });
+        if (!response.ok) {
+            throw new Error(`Export failed: ${response.status} ${response.statusText}`);
+        }
+        return response.blob();
+    }
+
+    async importAllDataCsv(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const headers = { ...this.getHeaders() };
+        delete headers['Content-Type'];
+
+        const { data } = await this.fetchJson('/data/import-csv', {
+            method: 'POST',
+            body: formData,
+            headers,
+        });
+        return data;
+    }
 }
 
 // Export API instance

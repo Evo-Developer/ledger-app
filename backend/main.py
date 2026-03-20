@@ -32,7 +32,8 @@ from schemas import (
     Integration as IntegrationSchema, IntegrationCreate, IntegrationUpdate,
     AuditLog as AuditLogSchema, Token, DashboardStats, TransactionFilter,
     AuditLogFilter, LoginRequest, UserRoleUpdate, UserStatusUpdate,
-    ExpenseReportEmailRequest, ExpenseReportEmailResponse, IntegrationAuthUrlResponse
+    ExpenseReportEmailRequest, ExpenseReportEmailResponse, IntegrationAuthUrlResponse,
+    DataImportResponse
 )
 from auth import (
     get_password_hash, authenticate_user, create_access_token,
@@ -471,6 +472,139 @@ def _send_gmail_message(db: Session, integration: Integration, recipient_email: 
     )
 
 
+EXPORT_COLUMNS = [
+    "section", "id", "name", "type", "description", "value", "amount", "current_value",
+    "category", "date", "notes", "recurring", "spread_over_year", "source", "lender", "outstanding",
+    "interest_rate", "monthly_payment", "due_date", "include_in_balance",
+    "include_in_income", "limit", "target", "current", "metric", "metric_value"
+]
+
+
+def _bool_to_csv(value) -> str:
+    return "true" if bool(value) else "false"
+
+
+def _csv_to_bool(value, default=False) -> bool:
+    if value is None or value == "":
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _csv_to_float(value, default=0.0):
+    if value is None or value == "":
+        return default
+    return float(value)
+
+
+def _csv_to_datetime(value):
+    if not value:
+        return None
+    return datetime.fromisoformat(value) if "T" in value else datetime.strptime(value, "%Y-%m-%d")
+
+
+def _build_export_rows(current_user: User, db: Session):
+    transactions = db.query(Transaction).filter(Transaction.user_id == current_user.id).order_by(Transaction.date.asc()).all()
+    investments = db.query(Investment).filter(Investment.user_id == current_user.id).order_by(Investment.created_at.asc()).all()
+    liabilities = db.query(Liability).filter(Liability.user_id == current_user.id).order_by(Liability.created_at.asc()).all()
+    assets = db.query(Asset).filter(Asset.user_id == current_user.id).order_by(Asset.created_at.asc()).all()
+    budgets = db.query(Budget).filter(Budget.user_id == current_user.id).order_by(Budget.created_at.asc()).all()
+    goals = db.query(Goal).filter(Goal.user_id == current_user.id).order_by(Goal.created_at.asc()).all()
+
+    income_total = sum(float(t.amount or 0) for t in transactions if t.type == TransactionType.INCOME)
+    expense_total = sum(float(t.amount or 0) for t in transactions if t.type == TransactionType.EXPENSE)
+    investment_total = sum(float(i.amount_invested or 0) for i in investments)
+    asset_total = sum(float(a.value or 0) for a in assets)
+    liability_total = sum(float(l.outstanding or l.amount or 0) for l in liabilities)
+    savings_total = income_total + investment_total - expense_total
+
+    rows = []
+
+    for tx in transactions:
+        rows.append({
+            "section": "transaction",
+            "id": tx.id,
+            "type": tx.type.value if hasattr(tx.type, "value") else str(tx.type),
+            "description": tx.description,
+            "amount": tx.amount,
+            "category": tx.category,
+            "date": tx.date.isoformat() if tx.date else "",
+            "notes": tx.notes or "",
+            "recurring": _bool_to_csv(tx.recurring),
+            "spread_over_year": _bool_to_csv(getattr(tx, "spread_over_year", False)),
+            "source": tx.source or "",
+        })
+
+    for inv in investments:
+        rows.append({
+            "section": "investment",
+            "id": inv.id,
+            "name": inv.name,
+            "type": inv.type,
+            "amount": inv.amount_invested,
+            "current_value": inv.current_value if inv.current_value is not None else "",
+            "notes": inv.notes or "",
+        })
+
+    for lib in liabilities:
+        rows.append({
+            "section": "liability",
+            "id": lib.id,
+            "lender": lib.lender,
+            "amount": lib.amount,
+            "outstanding": lib.outstanding,
+            "interest_rate": lib.interest_rate if lib.interest_rate is not None else "",
+            "monthly_payment": lib.monthly_payment if lib.monthly_payment is not None else "",
+            "due_date": lib.due_date.isoformat() if lib.due_date else "",
+            "notes": lib.notes or "",
+        })
+
+    for asset in assets:
+        rows.append({
+            "section": "asset",
+            "id": asset.id,
+            "name": asset.name,
+            "type": asset.type or "",
+            "value": asset.value,
+            "description": asset.description or "",
+            "include_in_balance": _bool_to_csv(asset.include_in_balance),
+            "include_in_income": _bool_to_csv(getattr(asset, "include_in_income", False)),
+        })
+
+    for budget in budgets:
+        rows.append({
+            "section": "budget",
+            "id": budget.id,
+            "category": budget.category,
+            "limit": budget.limit,
+        })
+
+    for goal in goals:
+        rows.append({
+            "section": "goal",
+            "id": goal.id,
+            "name": goal.name,
+            "target": goal.target,
+            "current": goal.current,
+        })
+
+    summary_rows = [
+        ("income_total", income_total),
+        ("expense_total", expense_total),
+        ("investment_total", investment_total),
+        ("asset_total", asset_total),
+        ("liability_total", liability_total),
+        ("savings_total", savings_total),
+    ]
+    for metric, metric_value in summary_rows:
+        rows.append({
+            "section": "summary",
+            "metric": metric,
+            "metric_value": metric_value,
+        })
+
+    return rows
+
+
 # ==================== Authentication Endpoints ====================
 
 @app.post("/api/auth/register", response_model=UserSchema)
@@ -668,7 +802,7 @@ def upload_transactions_csv(
 ):
     """Upload transactions from a CSV file.
     Required columns: type, description, amount, category, date
-    Optional columns: notes, recurring (true/false)
+    Optional columns: notes, recurring (true/false), spread_over_year (true/false)
     """
     try:
         data = file.file.read().decode('utf-8-sig')
@@ -701,6 +835,8 @@ def upload_transactions_csv(
         notes = row.get('notes', '').strip() if row.get('notes') else ''
         recurring_value = row.get('recurring', '').strip().lower()
         recurring = recurring_value in ('1', 'true', 'yes', 'y')
+        spread_over_year_value = row.get('spread_over_year', '').strip().lower()
+        spread_over_year = spread_over_year_value in ('1', 'true', 'yes', 'y')
 
         try:
             transaction_date = datetime.fromisoformat(row.get('date').strip()) if 'T' in row.get('date').strip() else datetime.strptime(row.get('date').strip(), '%Y-%m-%d')
@@ -716,6 +852,7 @@ def upload_transactions_csv(
             date=transaction_date,
             notes=notes,
             recurring=recurring,
+            spread_over_year=spread_over_year,
             synced=False,
             source='csv'
         )
@@ -823,11 +960,15 @@ def create_asset(
     current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
-    db_asset = Asset(**asset.dict(), user_id=current_user.id)
-    db.add(db_asset)
-    db.commit()
-    db.refresh(db_asset)
-    return db_asset
+    try:
+        db_asset = Asset(**asset.dict(), user_id=current_user.id)
+        db.add(db_asset)
+        db.commit()
+        db.refresh(db_asset)
+        return db_asset
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Create asset error: {type(exc).__name__}: {exc}")
 
 
 @app.put("/api/assets/{asset_id}", response_model=AssetSchema)
@@ -841,13 +982,17 @@ def update_asset(
     if not db_asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    data = asset.dict(exclude_unset=True)
-    for key, value in data.items():
-        setattr(db_asset, key, value)
+    try:
+        data = asset.dict(exclude_unset=True)
+        for key, value in data.items():
+            setattr(db_asset, key, value)
 
-    db.commit()
-    db.refresh(db_asset)
-    return db_asset
+        db.commit()
+        db.refresh(db_asset)
+        return db_asset
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Update asset error: {type(exc).__name__}: {exc}")
 
 
 @app.delete("/api/assets/{asset_id}")
@@ -894,6 +1039,204 @@ def send_expense_report_email(
         "message": "Expense report sent successfully.",
         "recipient_email": payload.recipient_email,
         "report_month": month_start.strftime("%Y-%m"),
+    }
+
+
+@app.get("/api/data/export-csv")
+def export_all_data_csv(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Export transactions, investments, liabilities, assets, budgets, goals, and summaries as CSV."""
+    rows = _build_export_rows(current_user, db)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=EXPORT_COLUMNS)
+    writer.writeheader()
+    for row in rows:
+        normalized = {key: row.get(key, "") for key in EXPORT_COLUMNS}
+        writer.writerow(normalized)
+
+    filename = f"ledger-export-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
+    from fastapi.responses import Response
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.post("/api/data/import-csv", response_model=DataImportResponse)
+def import_all_data_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_write_access),
+    db: Session = Depends(get_db)
+):
+    """Import a full Ledger export CSV and upsert supported entities."""
+    try:
+        raw_data = file.file.read().decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(raw_data))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read CSV file: {exc}") from exc
+
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV file has no header")
+
+    created = 0
+    updated = 0
+    skipped = 0
+
+    for row in reader:
+        section = (row.get("section") or "").strip().lower()
+        if not section or section == "summary":
+            skipped += 1
+            continue
+
+        row_id = row.get("id")
+        row_id = int(row_id) if row_id and row_id.strip().isdigit() else None
+
+        if section == "transaction":
+            raw_type = (row.get("type") or "expense").strip().lower()
+            try:
+                transaction_type = TransactionType(raw_type)
+            except ValueError:
+                skipped += 1
+                continue
+
+            payload = {
+                "type": transaction_type,
+                "description": row.get("description") or "",
+                "amount": _csv_to_float(row.get("amount")),
+                "category": row.get("category") or "Other",
+                "date": _csv_to_datetime(row.get("date")),
+                "notes": row.get("notes") or None,
+                "recurring": _csv_to_bool(row.get("recurring")),
+                "spread_over_year": _csv_to_bool(row.get("spread_over_year")),
+                "source": row.get("source") or None,
+            }
+            if row_id:
+                existing = db.query(Transaction).filter(Transaction.user_id == current_user.id, Transaction.id == row_id).first()
+                if existing:
+                    for key, value in payload.items():
+                        setattr(existing, key, value)
+                    updated += 1
+                else:
+                    db.add(Transaction(id=row_id, user_id=current_user.id, synced=False, **payload))
+                    created += 1
+            else:
+                db.add(Transaction(user_id=current_user.id, synced=False, **payload))
+                created += 1
+
+        elif section == "investment":
+            payload = {
+                "name": row.get("name") or "",
+                "type": row.get("type") or "",
+                "amount_invested": _csv_to_float(row.get("amount")),
+                "current_value": _csv_to_float(row.get("current_value"), None) if row.get("current_value") not in ("", None) else None,
+                "notes": row.get("notes") or None,
+            }
+            if row_id:
+                existing = db.query(Investment).filter(Investment.user_id == current_user.id, Investment.id == row_id).first()
+                if existing:
+                    for key, value in payload.items():
+                        setattr(existing, key, value)
+                    updated += 1
+                else:
+                    db.add(Investment(id=row_id, user_id=current_user.id, **payload))
+                    created += 1
+            else:
+                db.add(Investment(user_id=current_user.id, **payload))
+                created += 1
+
+        elif section == "liability":
+            payload = {
+                "lender": row.get("lender") or "",
+                "amount": _csv_to_float(row.get("amount")),
+                "outstanding": _csv_to_float(row.get("outstanding")),
+                "interest_rate": _csv_to_float(row.get("interest_rate"), None) if row.get("interest_rate") not in ("", None) else None,
+                "monthly_payment": _csv_to_float(row.get("monthly_payment"), None) if row.get("monthly_payment") not in ("", None) else None,
+                "due_date": _csv_to_datetime(row.get("due_date")) if row.get("due_date") else None,
+                "notes": row.get("notes") or None,
+            }
+            if row_id:
+                existing = db.query(Liability).filter(Liability.user_id == current_user.id, Liability.id == row_id).first()
+                if existing:
+                    for key, value in payload.items():
+                        setattr(existing, key, value)
+                    updated += 1
+                else:
+                    db.add(Liability(id=row_id, user_id=current_user.id, **payload))
+                    created += 1
+            else:
+                db.add(Liability(user_id=current_user.id, **payload))
+                created += 1
+
+        elif section == "asset":
+            payload = {
+                "name": row.get("name") or "",
+                "type": row.get("type") or None,
+                "value": _csv_to_float(row.get("value")),
+                "description": row.get("description") or None,
+                "include_in_balance": _csv_to_bool(row.get("include_in_balance")),
+                "include_in_income": _csv_to_bool(row.get("include_in_income")),
+            }
+            if row_id:
+                existing = db.query(Asset).filter(Asset.user_id == current_user.id, Asset.id == row_id).first()
+                if existing:
+                    for key, value in payload.items():
+                        setattr(existing, key, value)
+                    updated += 1
+                else:
+                    db.add(Asset(id=row_id, user_id=current_user.id, **payload))
+                    created += 1
+            else:
+                db.add(Asset(user_id=current_user.id, **payload))
+                created += 1
+
+        elif section == "budget":
+            payload = {
+                "category": row.get("category") or "Other",
+                "limit": _csv_to_float(row.get("limit")),
+            }
+            if row_id:
+                existing = db.query(Budget).filter(Budget.user_id == current_user.id, Budget.id == row_id).first()
+                if existing:
+                    for key, value in payload.items():
+                        setattr(existing, key, value)
+                    updated += 1
+                else:
+                    db.add(Budget(id=row_id, user_id=current_user.id, **payload))
+                    created += 1
+            else:
+                db.add(Budget(user_id=current_user.id, **payload))
+                created += 1
+
+        elif section == "goal":
+            payload = {
+                "name": row.get("name") or "",
+                "target": _csv_to_float(row.get("target")),
+                "current": _csv_to_float(row.get("current")),
+            }
+            if row_id:
+                existing = db.query(Goal).filter(Goal.user_id == current_user.id, Goal.id == row_id).first()
+                if existing:
+                    for key, value in payload.items():
+                        setattr(existing, key, value)
+                    updated += 1
+                else:
+                    db.add(Goal(id=row_id, user_id=current_user.id, **payload))
+                    created += 1
+            else:
+                db.add(Goal(user_id=current_user.id, **payload))
+                created += 1
+        else:
+            skipped += 1
+
+    db.commit()
+    return {
+        "message": "CSV import completed successfully.",
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
     }
 
 

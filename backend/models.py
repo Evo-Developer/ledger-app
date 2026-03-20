@@ -55,6 +55,7 @@ class Transaction(Base):
     date = Column(DateTime, nullable=False)
     notes = Column(Text)
     recurring = Column(Boolean, default=False)
+    spread_over_year = Column(Boolean, default=False)
     synced = Column(Boolean, default=False)
     source = Column(String(100))  # phonepe, groww, manual, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
