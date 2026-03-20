@@ -1505,7 +1505,10 @@
 
         <!-- Insights Section -->
         <div id="insights-section" class="section" style="display: none;">
-            <h2 class="section-title" style="margin-bottom: 20px;">Financial Insights</h2>
+            <div class="section-header">
+                <h2 class="section-title">Financial Insights</h2>
+                <button class="btn" onclick="openModal('expenseReport')">📧 Send Expense Report</button>
+            </div>
             <div class="chart-container">
                 <canvas id="expenseChart" width="400" height="200"></canvas>
             </div>
@@ -1566,6 +1569,19 @@
                     <div class="sync-info">
                         <span id="gpay-sync">Never synced</span>
                         <span id="gpay-count">0 transactions</span>
+                    </div>
+                </div>
+
+                <div class="integration-card" onclick="toggleIntegration('gmail')">
+                    <div class="integration-header">
+                        <div class="integration-icon">✉️</div>
+                        <span class="integration-status status-disconnected" id="gmail-status">Connect</span>
+                    </div>
+                    <h3 class="integration-title">Gmail</h3>
+                    <p class="integration-description">Authenticate Gmail to send expense reports without app passwords</p>
+                    <div class="sync-info">
+                        <span id="gmail-sync">Not connected</span>
+                        <span id="gmail-count">0 reports</span>
                     </div>
                 </div>
 
@@ -1803,8 +1819,12 @@
                     <input type="number" class="form-input" id="assetValue" required step="0.01" placeholder="0" />
                 </div>
                 <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="assetIncludeInBalance" style="width: auto; margin: 0;" checked />
+                    <input type="checkbox" id="assetIncludeInBalance" style="width: auto; margin: 0;" />
                     <label for="assetIncludeInBalance" class="form-label" style="margin: 0;">Include this asset in dashboard balance</label>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="assetIncludeInIncome" style="width: auto; margin: 0;" />
+                    <label for="assetIncludeInIncome" class="form-label" style="margin: 0;">Add this asset to income</label>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Description</label>
@@ -2042,6 +2062,32 @@
         </div>
     </div>
 
+    <!-- Expense Report Modal -->
+    <div id="expenseReportModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Send Expense Report</h3>
+                <button class="close-btn" onclick="closeModal('expenseReport')">&times;</button>
+            </div>
+            <form onsubmit="sendExpenseReport(event)">
+                <div id="expenseReportGmailStatus" class="helper-text" style="margin-bottom: 16px;"></div>
+                <button type="button" class="btn btn-secondary" style="margin-bottom: 16px;" onclick="startGmailConnect()">Connect Gmail</button>
+                <div class="form-group">
+                    <label class="form-label">Gmail Address</label>
+                    <input type="email" class="form-input" id="expenseReportEmail" required placeholder="yourname@gmail.com" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Report Month</label>
+                    <input type="month" class="form-input" id="expenseReportMonth" />
+                </div>
+                <div class="helper-text" style="margin-bottom: 16px;">
+                    We will email an expense report with inline charts for the selected month.
+                </div>
+                <button type="submit" class="btn" id="expenseReportSendBtn">Send Report</button>
+            </form>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="./assets/api.js"></script>
     <script>
@@ -2228,11 +2274,18 @@
 
                 async getIntegrations() { return this.request('/integrations'); },
                 async syncIntegration(appName) { return this.request(`/integrations/${appName}/sync`, { method: 'POST' }); },
+                async getGmailAuthUrl() { return this.request('/integrations/gmail/auth-url'); },
                 async getAuditLogs() { return this.request('/audit-logs'); },
                 async getUsers() { return this.request('/users'); },
                 async updateUserRole(userId, role) { return this.request(`/users/${userId}/role`, { method: 'PUT', body: JSON.stringify({ role }) }); },
                 async updateUserStatus(userId, isActive) { return this.request(`/users/${userId}/status`, { method: 'PUT', body: JSON.stringify({ is_active: isActive }) }); },
                 async deleteUser(userId) { return this.request(`/users/${userId}`, { method: 'DELETE' }); },
+                async sendExpenseReportEmail(recipientEmail, reportMonth) {
+                    return this.request('/reports/expense-email', {
+                        method: 'POST',
+                        body: JSON.stringify({ recipient_email: recipientEmail, report_month: reportMonth || null })
+                    });
+                },
             };
         }
 
@@ -2578,6 +2631,13 @@
                 description: 'Import trading and demat account data',
                 countLabel: 'trades'
             },
+            gmail: {
+                label: 'Gmail',
+                icon: '✉️',
+                description: 'Authenticate Gmail to send expense reports',
+                countLabel: 'reports',
+                syncable: false
+            },
             hdfc: {
                 label: 'HDFC Bank',
                 icon: '🏦',
@@ -2657,9 +2717,20 @@
                 .reduce((sum, asset) => sum + (parseFloat(asset.value ?? 0) || 0), 0);
         }
 
+        function getTrackedAssetsValue() {
+            return assets
+                .reduce((sum, asset) => sum + (parseFloat(asset.value ?? 0) || 0), 0);
+        }
+
+        function getIncomeEligibleAssetsValue() {
+            return assets
+                .filter(asset => asset.include_in_income === true)
+                .reduce((sum, asset) => sum + (parseFloat(asset.value ?? 0) || 0), 0);
+        }
+
         function getFinancialSnapshot() {
             const monthTransactions = getCurrentMonthTransactions();
-            const income = monthTransactions
+            const baseIncome = monthTransactions
                 .filter(t => t.type === 'income')
                 .reduce((sum, t) => sum + t.amount, 0);
             const expenses = monthTransactions
@@ -2669,18 +2740,24 @@
                 .reduce((sum, l) => sum + (parseFloat(l.outstanding ?? l.amount ?? 0) || 0), 0);
             const totalInvested = investments
                 .reduce((sum, inv) => sum + (parseFloat(inv.amount_invested ?? 0) || 0), 0);
-            const totalAssetsValue = getIncludedAssetsValue();
-            const savings = income + totalInvested - expenses;
-            const netBalance = totalAssetsValue + savings - totalLiabilities;
+            const totalAssetsValue = getTrackedAssetsValue();
+            const includedAssetsValue = getIncludedAssetsValue();
+            const totalIncomeAssets = getIncomeEligibleAssetsValue();
+            const income = baseIncome + totalInvested + totalIncomeAssets;
+            const savings = income - expenses;
+            const netBalance = includedAssetsValue + savings - totalLiabilities;
 
             return {
                 monthTransactions,
+                baseIncome,
                 income,
                 expenses,
                 savings,
                 totalLiabilities,
                 totalInvested,
                 totalAssetsValue,
+                includedAssetsValue,
+                totalIncomeAssets,
                 netBalance,
             };
         }
@@ -2843,12 +2920,14 @@
                 totalLiabilities,
                 totalInvested,
                 totalAssetsValue,
+                includedAssetsValue,
                 netBalance,
             } = getFinancialSnapshot();
 
-            const savingsRate = income > 0 ? ((savings / income) * 100).toFixed(0) : 0;
+            const monthlySavings = income - expenses;
+            const savingsRate = income > 0 ? ((monthlySavings / income) * 100).toFixed(0) : 0;
             const liabilityCover = totalLiabilities > 0 ? ((savings / totalLiabilities) * 100).toFixed(0) : '—';
-            document.getElementById('balanceChange').textContent = 'Assets + savings - liabilities';
+            document.getElementById('balanceChange').textContent = 'Selected assets + savings - liabilities';
 
             setAdaptiveCardValue('totalBalance', formatSignedCurrency(netBalance));
             setCardValueTone('totalBalance', netBalance < 0 ? 'negative' : 'positive');
@@ -2865,7 +2944,7 @@
             setAdaptiveCardValue('totalLiabilities', formatCurrency(totalLiabilities));
             setCardValueTone('totalLiabilities', 'negative');
             setAdaptiveCardValue('savingsRate', savingsRate + '%');
-            setCardValueTone('savingsRate', savings < 0 ? 'negative' : 'positive');
+            setCardValueTone('savingsRate', monthlySavings < 0 ? 'negative' : 'positive');
             document.getElementById('savingsLiabilityRatio').textContent = `Liability cover: ${liabilityCover === '—' ? '—' : liabilityCover + '%'} `;
 
         }
@@ -3462,6 +3541,9 @@
                             <div class="goal-percentage ${asset.include_in_balance !== false ? 'positive' : ''}">
                                 ${asset.include_in_balance !== false ? 'Included in balance' : 'Excluded from balance'}
                             </div>
+                            <div class="goal-percentage ${asset.include_in_income ? 'positive' : ''}">
+                                ${asset.include_in_income ? 'Added to income' : 'Not added to income'}
+                            </div>
                             ${asset.description ? `<p style="color: var(--text-secondary); margin-top: 8px;">${asset.description}</p>` : ''}
                         </div>
                     </div>
@@ -3479,7 +3561,8 @@
             document.getElementById('assetName').value = '';
             document.getElementById('assetType').value = 'Immovable Property';
             document.getElementById('assetValue').value = '';
-            document.getElementById('assetIncludeInBalance').checked = true;
+            document.getElementById('assetIncludeInBalance').checked = false;
+            document.getElementById('assetIncludeInIncome').checked = false;
             document.getElementById('assetDescription').value = '';
             document.getElementById('assetSaveBtn').style.display = 'inline-flex';
             document.getElementById('assetUpdateBtn').style.display = 'none';
@@ -3494,6 +3577,7 @@
                 type: document.getElementById('assetType').value,
                 value: parseFloat(document.getElementById('assetValue').value),
                 include_in_balance: document.getElementById('assetIncludeInBalance').checked,
+                include_in_income: document.getElementById('assetIncludeInIncome').checked,
                 description: document.getElementById('assetDescription').value || ''
             };
 
@@ -3534,6 +3618,7 @@
             document.getElementById('assetType').value = asset.type || '';
             document.getElementById('assetValue').value = asset.value;
             document.getElementById('assetIncludeInBalance').checked = asset.include_in_balance !== false;
+            document.getElementById('assetIncludeInIncome').checked = asset.include_in_income === true;
             document.getElementById('assetDescription').value = asset.description || '';
             document.getElementById('assetSaveBtn').style.display = 'none';
             document.getElementById('assetUpdateBtn').style.display = 'inline-flex';
@@ -4044,6 +4129,40 @@
         }
 
         // Integration functions
+        function updateExpenseReportGmailStatus() {
+            const statusEl = document.getElementById('expenseReportGmailStatus');
+            if (!statusEl) return;
+
+            const gmail = integrations.gmail;
+            if (gmail?.connected) {
+                statusEl.textContent = gmail.account_email
+                    ? `Gmail connected as ${gmail.account_email}`
+                    : 'Gmail connected and ready to send reports.';
+            } else {
+                statusEl.textContent = 'Connect Gmail first to send reports without storing a password.';
+            }
+        }
+
+        async function startGmailConnect() {
+            if (!ensureWriteAccess('connect Gmail')) return;
+
+            try {
+                const getUrl = typeof api.getGmailAuthUrl === 'function'
+                    ? api.getGmailAuthUrl.bind(api)
+                    : () => api.request('/integrations/gmail/auth-url');
+                const result = await getUrl();
+                const popup = window.open(result.auth_url, 'gmail-oauth', 'width=560,height=720');
+                if (!popup) {
+                    window.location.href = result.auth_url;
+                    return;
+                }
+                showNotification('Complete Gmail sign-in in the popup window.', 'info');
+            } catch (error) {
+                console.error('Failed to start Gmail OAuth:', error);
+                showNotification('Failed to start Gmail connection: ' + error.message, 'error');
+            }
+        }
+
         function updateIntegrationUI() {
             Object.keys(SUPPORTED_INTEGRATIONS).forEach(app => {
                 const card = document.querySelector(`.integration-card[onclick*="${app}"]`);
@@ -4066,12 +4185,19 @@
                     status.className = 'integration-status status-connected';
                     status.title = 'Connected';
 
-                    syncInfo.textContent = integration.last_sync
-                        ? 'Last synced: ' + new Date(integration.last_sync).toLocaleString()
-                        : 'Never synced';
+                    if (app === 'gmail') {
+                        syncInfo.textContent = integration.account_email
+                            ? `Connected as ${integration.account_email}`
+                            : 'Gmail authorized';
+                        countInfo.textContent = 'Ready to send reports';
+                    } else {
+                        syncInfo.textContent = integration.last_sync
+                            ? 'Last synced: ' + new Date(integration.last_sync).toLocaleString()
+                            : 'Never synced';
 
-                    const count = transactions.filter(t => t.source === app).length;
-                    countInfo.textContent = `${count} ${meta.countLabel || 'transactions'}`;
+                        const count = transactions.filter(t => t.source === app).length;
+                        countInfo.textContent = `${count} ${meta.countLabel || 'transactions'}`;
+                    }
                 } else if (lastError) {
                     status.textContent = 'Failed to connect';
                     status.className = 'integration-status status-failed';
@@ -4088,6 +4214,7 @@
                     countInfo.textContent = `0 ${meta.countLabel || 'transactions'}`;
                 }
             });
+            updateExpenseReportGmailStatus();
         }
 
         async function disconnectIntegration(app) {
@@ -4117,6 +4244,10 @@
                     disconnectIntegration(app);
                 }
             } else {
+                if (app === 'gmail') {
+                    startGmailConnect();
+                    return;
+                }
                 const existing = integrations[app] || {};
                 document.getElementById('integrationModalTitle').textContent = `Connect ${label}`;
                 document.getElementById('apiKeyInput').value = existing.api_key || '';
@@ -4134,6 +4265,10 @@
         async function connectApp() {
             if (!currentIntegration) return;
             if (!ensureWriteAccess('connect integrations')) return;
+            if (currentIntegration === 'gmail') {
+                await startGmailConnect();
+                return;
+            }
 
             const apiKey = document.getElementById('apiKeyInput').value || '';
             const syncFrequency = document.getElementById('syncFrequency').value;
@@ -4210,7 +4345,7 @@
         async function syncAllApps() {
             if (!ensureWriteAccess('sync integrations')) return;
 
-            const connectedApps = Object.keys(integrations).filter(app => integrations[app].connected);
+            const connectedApps = Object.keys(integrations).filter(app => integrations[app].connected && SUPPORTED_INTEGRATIONS[app]?.syncable !== false);
             
             if (connectedApps.length === 0) {
                 alert('No apps connected. Connect apps from the Integrations tab first.');
@@ -4538,6 +4673,12 @@
                 document.getElementById('documentSubfolder').value = '';
                 document.getElementById('documentFile').value = null;
                 updateDocumentFolderOptions();
+            } else if (type === 'expenseReport') {
+                document.getElementById('expenseReportEmail').value = currentUser?.email || '';
+                document.getElementById('expenseReportMonth').value = new Date().toISOString().slice(0, 7);
+                document.getElementById('expenseReportSendBtn').disabled = false;
+                document.getElementById('expenseReportSendBtn').textContent = 'Send Report';
+                updateExpenseReportGmailStatus();
             }
             document.getElementById(type + 'Modal').classList.add('active');
         }
@@ -4568,6 +4709,10 @@
                 document.getElementById('budgetAmount').value = '';
             } else if (type === 'asset') {
                 resetAssetModal();
+            } else if (type === 'expenseReport') {
+                document.getElementById('expenseReportEmail').value = '';
+                document.getElementById('expenseReportMonth').value = '';
+                updateExpenseReportGmailStatus();
             }
         }
 
@@ -4623,6 +4768,7 @@
                 totalInvested,
                 savings,
                 totalAssetsValue,
+                includedAssetsValue,
                 netBalance,
             } = getFinancialSnapshot();
             
@@ -4649,8 +4795,12 @@
                         <div class="stat-value negative">${formatCurrency(expenses)}</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">Included Assets</div>
+                        <div class="stat-label">Tracked Assets</div>
                         <div class="stat-value positive">${formatCurrency(totalAssetsValue)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Assets In Balance</div>
+                        <div class="stat-value positive">${formatCurrency(includedAssetsValue)}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">Savings</div>
@@ -4777,6 +4927,7 @@
         function showIncomeBreakdown() {
             const monthTransactions = getCurrentMonthTransactions();
             const incomeTransactions = monthTransactions.filter(t => t.type === 'income');
+            const { baseIncome, totalInvested, totalIncomeAssets, income } = getFinancialSnapshot();
             
             const byCategory = {};
             const bySource = {};
@@ -4793,20 +4944,37 @@
             let html = `
                 <div class="stat-grid">
                     <div class="stat-card">
+                        <div class="stat-label">Transaction Income</div>
+                        <div class="stat-value positive">${formatCurrency(baseIncome)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Investments Added</div>
+                        <div class="stat-value positive">${formatCurrency(totalInvested)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Assets Added</div>
+                        <div class="stat-value positive">${formatCurrency(totalIncomeAssets)}</div>
+                    </div>
+                    <div class="stat-card">
                         <div class="stat-label">Total Income</div>
-                        <div class="stat-value positive">${formatCurrency(total)}</div>
+                        <div class="stat-value positive">${formatCurrency(income)}</div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Transactions</div>
-                        <div class="stat-value">${incomeTransactions.length}</div>
+                </div>
+
+                <div class="breakdown-section">
+                    <div class="breakdown-section-title">
+                        <span>Income Formula</span>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Average</div>
-                        <div class="stat-value">${formatCurrency(avgTransaction)}</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Sources</div>
-                        <div class="stat-value">${Object.keys(bySource).length}</div>
+                    <div class="breakdown-item">
+                        <div class="breakdown-label">
+                            <div class="breakdown-info">
+                                <div class="breakdown-name">Transaction income + investments + selected assets</div>
+                                <div class="breakdown-count">${incomeTransactions.length} income transaction${incomeTransactions.length !== 1 ? 's' : ''}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="breakdown-amount positive">${formatCurrency(baseIncome)} + ${formatCurrency(totalInvested)} + ${formatCurrency(totalIncomeAssets)}</span>
+                        </div>
                     </div>
                 </div>
 
@@ -5003,7 +5171,8 @@
                 totalAssetsValue,
                 netBalance,
             } = getFinancialSnapshot();
-            const savingsRate = income > 0 ? ((savings / income) * 100).toFixed(1) : 0;
+            const monthlySavings = income - expenses;
+            const savingsRate = income > 0 ? ((monthlySavings / income) * 100).toFixed(1) : 0;
             const investmentRate = income > 0 ? ((totalInvested / income) * 100).toFixed(1) : 0;
             const expenseRatio = income > 0 ? ((expenses / income) * 100).toFixed(1) : 0;
 
@@ -5169,6 +5338,46 @@
             return colors[source] || '#e5e7eb';
         }
 
+        async function sendExpenseReport(event) {
+            event.preventDefault();
+
+            const recipientEmail = document.getElementById('expenseReportEmail').value.trim();
+            const reportMonth = document.getElementById('expenseReportMonth').value;
+            const btn = document.getElementById('expenseReportSendBtn');
+
+            if (!integrations.gmail?.connected) {
+                showNotification('Connect Gmail first before sending a report.', 'error');
+                return;
+            }
+
+            if (!recipientEmail) {
+                showNotification('Please enter a destination email address.', 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+
+            try {
+                const sendFn = typeof api.sendExpenseReportEmail === 'function'
+                    ? api.sendExpenseReportEmail.bind(api)
+                    : (email, month) => api.request('/reports/expense-email', {
+                        method: 'POST',
+                        body: JSON.stringify({ recipient_email: email, report_month: month || null })
+                    });
+
+                await sendFn(recipientEmail, reportMonth);
+                closeModal('expenseReport');
+                showNotification(`Expense report sent to ${recipientEmail}.`, 'success');
+            } catch (error) {
+                console.error('Failed to send expense report:', error);
+                showNotification('Failed to send expense report: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send Report';
+            }
+        }
+
         // Initialize app
         async function init() {
             console.log('FinApp init start');
@@ -5259,6 +5468,19 @@
                 console.log('global click', target.tagName, target.id, target.className);
             }, { capture: true });
         };
+
+        window.addEventListener('message', async (event) => {
+            const message = event.data || {};
+            if (message.type === 'gmail-connected') {
+                await loadUsers().catch(() => {});
+                await Database.load();
+                updateIntegrationUI();
+                updateOverview();
+                showNotification(message.accountEmail ? `Gmail connected: ${message.accountEmail}` : 'Gmail connected successfully.', 'success');
+            } else if (message.type === 'gmail-connect-error') {
+                showNotification('Gmail connection failed: ' + (message.message || 'Unknown error'), 'error');
+            }
+        });
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', bindDelegatedListeners);

@@ -32,6 +32,8 @@ services:
     restart: always
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
       DATABASE_URL: mysql+pymysql://ledger_user:ledger_pass@db:3306/ledger_db
       SECRET_KEY: your-secret-key-change-this-in-production

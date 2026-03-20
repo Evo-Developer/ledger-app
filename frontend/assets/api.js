@@ -407,6 +407,10 @@ class API {
         });
     }
 
+    async getGmailAuthUrl() {
+        return this.request('/integrations/gmail/auth-url');
+    }
+
     // Audit Logs
     async getAuditLogs() {
         return this.request('/audit-logs');
@@ -440,6 +444,16 @@ class API {
     // Dashboard
     async getDashboardStats() {
         return this.request('/dashboard/stats');
+    }
+
+    async sendExpenseReportEmail(recipientEmail, reportMonth) {
+        return this.request('/reports/expense-email', {
+            method: 'POST',
+            body: JSON.stringify({
+                recipient_email: recipientEmail,
+                report_month: reportMonth || null,
+            }),
+        });
     }
 }
 

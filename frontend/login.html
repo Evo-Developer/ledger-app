@@ -724,6 +724,17 @@
                 strengthText.textContent = 'Strong password';
             }
         }
+
+        ['loginUsername', 'loginPassword'].forEach((id) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+
+            input.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                document.getElementById('loginForm').requestSubmit();
+            });
+        });
     </script>
 </body>
 </html>

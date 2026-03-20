@@ -93,7 +93,8 @@ class AssetBase(BaseModel):
     name: str
     type: Optional[str] = None
     value: float
-    include_in_balance: bool = True
+    include_in_balance: bool = False
+    include_in_income: bool = False
     description: Optional[str] = None
 
 
@@ -106,6 +107,7 @@ class AssetUpdate(BaseModel):
     type: Optional[str] = None
     value: Optional[float] = None
     include_in_balance: Optional[bool] = None
+    include_in_income: Optional[bool] = None
     description: Optional[str] = None
 
 
@@ -273,6 +275,7 @@ class IntegrationCreate(IntegrationBase):
 class IntegrationUpdate(BaseModel):
     connected: Optional[bool] = None
     api_key: Optional[str] = None
+    account_email: Optional[str] = None
     sync_frequency: Optional[str] = None
 
 
@@ -280,6 +283,7 @@ class Integration(IntegrationBase):
     id: int
     user_id: int
     connected: bool
+    account_email: Optional[str] = None
     last_sync: Optional[datetime] = None
     created_at: datetime
 
@@ -331,6 +335,21 @@ class UserRoleUpdate(BaseModel):
 
 class UserStatusUpdate(BaseModel):
     is_active: bool
+
+
+class ExpenseReportEmailRequest(BaseModel):
+    recipient_email: EmailStr
+    report_month: Optional[str] = None
+
+
+class ExpenseReportEmailResponse(BaseModel):
+    message: str
+    recipient_email: EmailStr
+    report_month: str
+
+
+class IntegrationAuthUrlResponse(BaseModel):
+    auth_url: str
 
 
 # Dashboard Stats

@@ -178,6 +178,58 @@ def ensure_asset_balance_column():
             print(f"[database] Warning: could not ensure include_in_balance column in assets: {e}")
 
 
+def ensure_asset_income_column():
+    """Ensure include_in_income column exists on assets table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(assets)')).fetchall()]
+                if 'include_in_income' not in columns:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN include_in_income BOOLEAN DEFAULT 0'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM assets LIKE 'include_in_income'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN include_in_income BOOLEAN NOT NULL DEFAULT FALSE'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='assets' AND column_name='include_in_income'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN include_in_income BOOLEAN NOT NULL DEFAULT FALSE'))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure include_in_income column in assets: {e}")
+
+
+def ensure_integration_oauth_columns():
+    """Ensure OAuth support columns exist on integrations table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(integrations)')).fetchall()]
+                if 'account_email' not in columns:
+                    conn.execute(text('ALTER TABLE integrations ADD COLUMN account_email VARCHAR(255)'))
+                if 'oauth_token' not in columns:
+                    conn.execute(text('ALTER TABLE integrations ADD COLUMN oauth_token TEXT'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                account_email_exists = conn.execute(text("SHOW COLUMNS FROM integrations LIKE 'account_email'")).fetchone()
+                if not account_email_exists:
+                    conn.execute(text('ALTER TABLE integrations ADD COLUMN account_email VARCHAR(255) NULL'))
+                oauth_token_exists = conn.execute(text("SHOW COLUMNS FROM integrations LIKE 'oauth_token'")).fetchone()
+                if not oauth_token_exists:
+                    conn.execute(text('ALTER TABLE integrations ADD COLUMN oauth_token TEXT NULL'))
+            elif engine.dialect.name == 'postgresql':
+                account_email_exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='integrations' AND column_name='account_email'")).fetchone()
+                if not account_email_exists:
+                    conn.execute(text('ALTER TABLE integrations ADD COLUMN account_email VARCHAR(255)'))
+                oauth_token_exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='integrations' AND column_name='oauth_token'")).fetchone()
+                if not oauth_token_exists:
+                    conn.execute(text('ALTER TABLE integrations ADD COLUMN oauth_token TEXT'))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure OAuth columns in integrations: {e}")
+
+
 def init_db():
     """Initialize database tables"""
     from models import Base
@@ -185,5 +237,7 @@ def init_db():
     ensure_user_role_column()
     ensure_bootstrap_admin()
     ensure_asset_balance_column()
+    ensure_asset_income_column()
+    ensure_integration_oauth_columns()
     ensure_transaction_recurring_column()
     ensure_document_folder_columns()

@@ -72,7 +72,8 @@ class Asset(Base):
     name = Column(String(255), nullable=False)
     type = Column(String(100), nullable=True)
     value = Column(Float, nullable=False, default=0.0)
-    include_in_balance = Column(Boolean, nullable=False, default=True)
+    include_in_balance = Column(Boolean, nullable=False, default=False)
+    include_in_income = Column(Boolean, nullable=False, default=False)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -169,6 +170,8 @@ class Integration(Base):
     app_name = Column(String(100), nullable=False)  # phonepe, groww, etc.
     connected = Column(Boolean, default=False)
     api_key = Column(String(500))
+    account_email = Column(String(255), nullable=True)
+    oauth_token = Column(Text, nullable=True)
     sync_frequency = Column(String(50))
     last_sync = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)

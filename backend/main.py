@@ -5,9 +5,19 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
+from jose import JWTError, jwt
 import json
 import os
+import calendar
+import smtplib
+import base64
 from uuid import uuid4
+from collections import defaultdict
+from email.message import EmailMessage
+from urllib.parse import urlencode
+from urllib.request import Request as UrlRequest, urlopen
+from urllib.error import HTTPError, URLError
+from fastapi.responses import HTMLResponse
 
 from database import get_db, init_db, engine
 from models import User, Transaction, Asset, Document, Budget, Goal, Investment, Liability, Integration, AuditLog, Base, UserRole
@@ -21,12 +31,14 @@ from schemas import (
     Liability as LiabilitySchema, LiabilityCreate, LiabilityUpdate,
     Integration as IntegrationSchema, IntegrationCreate, IntegrationUpdate,
     AuditLog as AuditLogSchema, Token, DashboardStats, TransactionFilter,
-    AuditLogFilter, LoginRequest, UserRoleUpdate, UserStatusUpdate
+    AuditLogFilter, LoginRequest, UserRoleUpdate, UserStatusUpdate,
+    ExpenseReportEmailRequest, ExpenseReportEmailResponse, IntegrationAuthUrlResponse
 )
 from auth import (
     get_password_hash, authenticate_user, create_access_token,
     get_current_active_user, ACCESS_TOKEN_EXPIRE_MINUTES,
-    get_client_ip, check_registration_rate_limit, require_admin, require_write_access
+    get_client_ip, check_registration_rate_limit, require_admin, require_write_access,
+    SECRET_KEY, ALGORITHM
 )
 from integration_providers import get_provider
 
@@ -92,6 +104,371 @@ def log_audit(db: Session, user_id: int, action: str, entity_type: str,
     )
     db.add(audit_log)
     db.commit()
+
+
+def _parse_report_month(report_month: Optional[str]) -> tuple[datetime, datetime, str]:
+    if report_month:
+        try:
+            month_start = datetime.strptime(report_month, "%Y-%m")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="report_month must be in YYYY-MM format") from exc
+    else:
+        now = datetime.utcnow()
+        month_start = datetime(now.year, now.month, 1)
+
+    last_day = calendar.monthrange(month_start.year, month_start.month)[1]
+    month_end = datetime(month_start.year, month_start.month, last_day, 23, 59, 59)
+    month_label = month_start.strftime("%B %Y")
+    return month_start, month_end, month_label
+
+
+def _format_inr(value: float) -> str:
+    return f"Rs. {value:,.0f}"
+
+
+def _generate_bar_chart_svg(title: str, items: List[tuple[str, float]], color: str) -> str:
+    width = 640
+    row_height = 34
+    chart_height = max(140, 70 + (len(items) * row_height))
+    max_value = max((value for _, value in items), default=1) or 1
+    bars = []
+
+    for index, (label, value) in enumerate(items[:6]):
+        y = 42 + index * row_height
+        bar_width = int((value / max_value) * 360) if max_value else 0
+        safe_label = label[:24]
+        bars.append(
+            f"""
+            <text x="20" y="{y + 12}" font-size="12" fill="#334155">{safe_label}</text>
+            <rect x="180" y="{y}" width="360" height="12" rx="6" fill="#e2e8f0"></rect>
+            <rect x="180" y="{y}" width="{bar_width}" height="12" rx="6" fill="{color}"></rect>
+            <text x="550" y="{y + 12}" font-size="12" text-anchor="end" fill="#0f172a">{_format_inr(value)}</text>
+            """
+        )
+
+    return f"""
+    <div style="margin: 24px 0;">
+        <div style="font-weight: 700; font-size: 16px; color: #0f172a; margin-bottom: 10px;">{title}</div>
+        <svg width="{width}" height="{chart_height}" viewBox="0 0 {width} {chart_height}" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; background: #f8fafc; border-radius: 16px;">
+            {''.join(bars) if bars else '<text x="20" y="44" font-size="13" fill="#64748b">No data available</text>'}
+        </svg>
+    </div>
+    """
+
+
+def _generate_line_chart_svg(title: str, items: List[tuple[str, float]]) -> str:
+    width = 640
+    height = 240
+    padding_left = 40
+    padding_right = 24
+    padding_top = 24
+    padding_bottom = 36
+    max_value = max((value for _, value in items), default=1) or 1
+    usable_width = width - padding_left - padding_right
+    usable_height = height - padding_top - padding_bottom
+
+    if len(items) <= 1:
+        points = f"{padding_left},{padding_top + usable_height}"
+    else:
+        point_list = []
+        for index, (_, value) in enumerate(items):
+            x = padding_left + (usable_width * index / (len(items) - 1))
+            y = padding_top + usable_height - ((value / max_value) * usable_height if max_value else 0)
+            point_list.append(f"{x:.1f},{y:.1f}")
+        points = " ".join(point_list)
+
+    labels = []
+    for index, (label, _) in enumerate(items[:8]):
+        x = padding_left + (usable_width * index / max(1, len(items[:8]) - 1))
+        labels.append(f'<text x="{x:.1f}" y="{height - 12}" font-size="11" text-anchor="middle" fill="#64748b">{label}</text>')
+
+    return f"""
+    <div style="margin: 24px 0;">
+        <div style="font-weight: 700; font-size: 16px; color: #0f172a; margin-bottom: 10px;">{title}</div>
+        <svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; background: #f8fafc; border-radius: 16px;">
+            <line x1="{padding_left}" y1="{padding_top + usable_height}" x2="{width - padding_right}" y2="{padding_top + usable_height}" stroke="#cbd5e1" stroke-width="1"/>
+            <line x1="{padding_left}" y1="{padding_top}" x2="{padding_left}" y2="{padding_top + usable_height}" stroke="#cbd5e1" stroke-width="1"/>
+            <polyline fill="none" stroke="#2563eb" stroke-width="3" points="{points}"/>
+            {''.join(labels) if items else '<text x="20" y="44" font-size="13" fill="#64748b">No data available</text>'}
+        </svg>
+    </div>
+    """
+
+
+def _build_expense_report_html(user: User, month_label: str, expenses: List[Transaction]) -> str:
+    total_expense = sum(float(tx.amount or 0) for tx in expenses)
+    expense_count = len(expenses)
+    avg_expense = total_expense / expense_count if expense_count else 0
+
+    by_category = defaultdict(float)
+    by_day = defaultdict(float)
+    for tx in expenses:
+        by_category[tx.category or "Other"] += float(tx.amount or 0)
+        by_day[tx.date.strftime("%d %b")] += float(tx.amount or 0)
+
+    category_items = sorted(by_category.items(), key=lambda item: item[1], reverse=True)
+    day_items = sorted(by_day.items(), key=lambda item: datetime.strptime(item[0], "%d %b"))
+    top_category = category_items[0][0] if category_items else "N/A"
+
+    summary_cards = f"""
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0 10px;">
+        <div style="flex: 1 1 180px; background: #eff6ff; border-radius: 16px; padding: 16px;">
+            <div style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .08em;">Total Expense</div>
+            <div style="font-size: 28px; font-weight: 700; color: #0f172a;">{_format_inr(total_expense)}</div>
+        </div>
+        <div style="flex: 1 1 180px; background: #fef2f2; border-radius: 16px; padding: 16px;">
+            <div style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .08em;">Transactions</div>
+            <div style="font-size: 28px; font-weight: 700; color: #0f172a;">{expense_count}</div>
+        </div>
+        <div style="flex: 1 1 180px; background: #ecfeff; border-radius: 16px; padding: 16px;">
+            <div style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .08em;">Average Expense</div>
+            <div style="font-size: 28px; font-weight: 700; color: #0f172a;">{_format_inr(avg_expense)}</div>
+        </div>
+        <div style="flex: 1 1 180px; background: #f8fafc; border-radius: 16px; padding: 16px;">
+            <div style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .08em;">Top Category</div>
+            <div style="font-size: 24px; font-weight: 700; color: #0f172a;">{top_category}</div>
+        </div>
+    </div>
+    """
+
+    category_rows = "".join(
+        f"<tr><td style='padding: 8px 0; color: #334155;'>{label}</td><td style='padding: 8px 0; text-align: right; font-weight: 600; color: #0f172a;'>{_format_inr(value)}</td></tr>"
+        for label, value in category_items[:8]
+    ) or "<tr><td colspan='2' style='padding: 8px 0; color: #64748b;'>No expense data available.</td></tr>"
+
+    return f"""
+    <html>
+    <body style="margin:0; padding:0; background:#f1f5f9; font-family:Arial,sans-serif; color:#0f172a;">
+        <div style="max-width:760px; margin:0 auto; padding:24px;">
+            <div style="background:linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%); color:white; border-radius:24px; padding:28px;">
+                <div style="font-size:13px; letter-spacing:.12em; text-transform:uppercase; opacity:.85;">Ledger App Expense Report</div>
+                <h1 style="margin:10px 0 6px; font-size:32px;">{month_label}</h1>
+                <div style="font-size:15px; opacity:.92;">Prepared for {user.full_name or user.username}</div>
+            </div>
+            <div style="background:white; border-radius:24px; padding:24px; margin-top:20px;">
+                {summary_cards}
+                {_generate_bar_chart_svg("Top Expense Categories", category_items[:6], "#ef4444")}
+                {_generate_line_chart_svg("Daily Expense Trend", day_items[:8])}
+                <div style="margin-top: 24px;">
+                    <div style="font-weight:700; font-size:16px; color:#0f172a; margin-bottom:10px;">Category Summary</div>
+                    <table style="width:100%; border-collapse:collapse;">
+                        {category_rows}
+                    </table>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+def _send_report_email(recipient_email: str, subject: str, html_body: str) -> None:
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM_EMAIL") or smtp_username
+
+    if not smtp_username or not smtp_password or not smtp_from:
+        raise HTTPException(
+            status_code=500,
+            detail="Email delivery is not configured. Set SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM_EMAIL in backend/.env.",
+        )
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = smtp_from
+    message["To"] = recipient_email
+    message.set_content("Your email client does not support HTML reports.")
+    message.add_alternative(html_body, subtype="html")
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as smtp:
+            smtp.starttls()
+            smtp.login(smtp_username, smtp_password)
+            smtp.send_message(message)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to send report email: {exc}") from exc
+
+
+GOOGLE_AUTH_BASE = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+GOOGLE_GMAIL_SCOPES = [
+    "openid",
+    "email",
+    "https://www.googleapis.com/auth/gmail.send",
+]
+
+
+def _google_client_id() -> str:
+    value = os.getenv("GOOGLE_CLIENT_ID")
+    if not value:
+        raise HTTPException(status_code=500, detail="Google OAuth is not configured. Set GOOGLE_CLIENT_ID in backend/.env.")
+    return value
+
+
+def _google_client_secret() -> str:
+    value = os.getenv("GOOGLE_CLIENT_SECRET")
+    if not value:
+        raise HTTPException(status_code=500, detail="Google OAuth is not configured. Set GOOGLE_CLIENT_SECRET in backend/.env.")
+    return value
+
+
+def _google_redirect_uri(request: Optional[Request] = None) -> str:
+    configured = os.getenv("GOOGLE_REDIRECT_URI")
+    if configured:
+        return configured
+    if request is None:
+        raise HTTPException(status_code=500, detail="Google OAuth redirect URI is not configured.")
+    base = str(request.base_url).rstrip("/")
+    return f"{base}/api/integrations/gmail/callback"
+
+
+def _google_api_json(url: str, method: str = "GET", data: Optional[dict] = None, headers: Optional[dict] = None):
+    encoded_data = None
+    request_headers = headers.copy() if headers else {}
+    if data is not None:
+        encoded_data = json.dumps(data).encode("utf-8")
+        request_headers.setdefault("Content-Type", "application/json")
+
+    req = UrlRequest(url, data=encoded_data, headers=request_headers, method=method)
+    try:
+        with urlopen(req, timeout=20) as response:
+            payload = response.read().decode("utf-8")
+            return json.loads(payload) if payload else {}
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=500, detail=f"Google API error: {body or exc.reason}") from exc
+    except URLError as exc:
+        raise HTTPException(status_code=500, detail=f"Google API connection failed: {exc.reason}") from exc
+
+
+def _google_form_post(url: str, payload: dict):
+    data = urlencode(payload).encode("utf-8")
+    req = UrlRequest(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+    try:
+        with urlopen(req, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=500, detail=f"Google OAuth error: {body or exc.reason}") from exc
+    except URLError as exc:
+        raise HTTPException(status_code=500, detail=f"Google OAuth connection failed: {exc.reason}") from exc
+
+
+def _create_google_oauth_state(user_id: int) -> str:
+    expires = datetime.utcnow() + timedelta(minutes=10)
+    return jwt.encode(
+        {"sub": str(user_id), "purpose": "gmail_oauth", "exp": expires, "iat": datetime.utcnow()},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
+def _decode_google_oauth_state(state: str) -> int:
+    try:
+        payload = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError as exc:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state.") from exc
+
+    if payload.get("purpose") != "gmail_oauth":
+        raise HTTPException(status_code=400, detail="Invalid OAuth state purpose.")
+    return int(payload.get("sub"))
+
+
+def _upsert_gmail_integration(db: Session, user_id: int, token_data: dict, account_email: str) -> Integration:
+    integration = db.query(Integration).filter(
+        Integration.user_id == user_id,
+        Integration.app_name == "gmail"
+    ).first()
+
+    token_json = json.dumps(token_data)
+    if integration:
+        integration.connected = True
+        integration.account_email = account_email
+        integration.oauth_token = token_json
+        integration.last_sync = datetime.utcnow()
+    else:
+        integration = Integration(
+            user_id=user_id,
+            app_name="gmail",
+            connected=True,
+            account_email=account_email,
+            oauth_token=token_json,
+            sync_frequency="manual",
+            last_sync=datetime.utcnow(),
+        )
+        db.add(integration)
+
+    db.commit()
+    db.refresh(integration)
+    return integration
+
+
+def _get_gmail_integration(db: Session, user_id: int) -> Integration:
+    integration = db.query(Integration).filter(
+        Integration.user_id == user_id,
+        Integration.app_name == "gmail",
+        Integration.connected == True
+    ).first()
+    if not integration or not integration.oauth_token:
+        raise HTTPException(status_code=400, detail="Gmail is not connected. Please connect your Gmail account first.")
+    return integration
+
+
+def _get_valid_google_access_token(db: Session, integration: Integration) -> str:
+    token_data = json.loads(integration.oauth_token or "{}")
+    access_token = token_data.get("access_token")
+    refresh_token = token_data.get("refresh_token")
+    expires_at = token_data.get("expires_at")
+
+    is_expired = True
+    if expires_at:
+        try:
+            is_expired = datetime.utcnow() >= datetime.fromisoformat(expires_at)
+        except ValueError:
+            is_expired = True
+
+    if access_token and not is_expired:
+        return access_token
+
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="Gmail connection has expired. Please reconnect your Gmail account.")
+
+    refreshed = _google_form_post(GOOGLE_TOKEN_URL, {
+        "client_id": _google_client_id(),
+        "client_secret": _google_client_secret(),
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    })
+
+    token_data["access_token"] = refreshed["access_token"]
+    token_data["expires_at"] = (datetime.utcnow() + timedelta(seconds=int(refreshed.get("expires_in", 3600)) - 60)).isoformat()
+    integration.oauth_token = json.dumps(token_data)
+    integration.last_sync = datetime.utcnow()
+    db.commit()
+    db.refresh(integration)
+    return token_data["access_token"]
+
+
+def _send_gmail_message(db: Session, integration: Integration, recipient_email: str, subject: str, html_body: str) -> None:
+    access_token = _get_valid_google_access_token(db, integration)
+    message = EmailMessage()
+    message["To"] = recipient_email
+    message["From"] = integration.account_email or "me"
+    message["Subject"] = subject
+    message.set_content("Your email client does not support HTML reports.")
+    message.add_alternative(html_body, subtype="html")
+
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+    _google_api_json(
+        GMAIL_SEND_URL,
+        method="POST",
+        data={"raw": raw_message},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
 
 
 # ==================== Authentication Endpoints ====================
@@ -486,6 +863,117 @@ def delete_asset(
     db.delete(db_asset)
     db.commit()
     return {"message": "Asset deleted successfully"}
+
+
+@app.post("/api/reports/expense-email", response_model=ExpenseReportEmailResponse)
+def send_expense_report_email(
+    payload: ExpenseReportEmailRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Generate a monthly expense report with charts and email it to the requested address."""
+    month_start, month_end, month_label = _parse_report_month(payload.report_month)
+    expenses = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.type == TransactionType.EXPENSE,
+        Transaction.date >= month_start,
+        Transaction.date <= month_end
+    ).order_by(Transaction.date.asc()).all()
+
+    report_html = _build_expense_report_html(current_user, month_label, expenses)
+    gmail_integration = _get_gmail_integration(db, current_user.id)
+    _send_gmail_message(
+        db=db,
+        integration=gmail_integration,
+        recipient_email=payload.recipient_email,
+        subject=f"Ledger Expense Report - {month_label}",
+        html_body=report_html
+    )
+
+    return {
+        "message": "Expense report sent successfully.",
+        "recipient_email": payload.recipient_email,
+        "report_month": month_start.strftime("%Y-%m"),
+    }
+
+
+@app.get("/api/integrations/gmail/auth-url", response_model=IntegrationAuthUrlResponse)
+def get_gmail_auth_url(
+    request: Request,
+    current_user: User = Depends(require_write_access)
+):
+    """Get a Google OAuth URL for connecting Gmail."""
+    state = _create_google_oauth_state(current_user.id)
+    params = {
+        "client_id": _google_client_id(),
+        "redirect_uri": _google_redirect_uri(request),
+        "response_type": "code",
+        "scope": " ".join(GOOGLE_GMAIL_SCOPES),
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "state": state,
+    }
+    return {"auth_url": f"{GOOGLE_AUTH_BASE}?{urlencode(params)}"}
+
+
+@app.get("/api/integrations/gmail/callback", response_class=HTMLResponse)
+def gmail_oauth_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Handle Google OAuth callback for Gmail integration."""
+    if error:
+        return HTMLResponse(f"<html><body><script>window.opener&&window.opener.postMessage({{type:'gmail-connect-error',message:{json.dumps(error)}}}, '*');window.close();</script></body></html>")
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing OAuth callback parameters.")
+
+    user_id = _decode_google_oauth_state(state)
+    token_payload = _google_form_post(GOOGLE_TOKEN_URL, {
+        "code": code,
+        "client_id": _google_client_id(),
+        "client_secret": _google_client_secret(),
+        "redirect_uri": _google_redirect_uri(request),
+        "grant_type": "authorization_code",
+    })
+
+    access_token = token_payload.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=500, detail="Google OAuth did not return an access token.")
+
+    userinfo = _google_api_json(
+        GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    token_payload["expires_at"] = (datetime.utcnow() + timedelta(seconds=int(token_payload.get("expires_in", 3600)) - 60)).isoformat()
+
+    integration = _upsert_gmail_integration(
+        db=db,
+        user_id=user_id,
+        token_data=token_payload,
+        account_email=userinfo.get("email", ""),
+    )
+
+    html = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; padding: 24px;">
+        <p>Gmail connected successfully. You can close this window.</p>
+        <script>
+          if (window.opener) {{
+            window.opener.postMessage({{
+              type: 'gmail-connected',
+              accountEmail: {json.dumps(integration.account_email or '')}
+            }}, '*');
+          }}
+          window.close();
+        </script>
+      </body>
+    </html>
+    """
+    return HTMLResponse(html)
 
 
 @app.get("/api/documents", response_model=List[DocumentSchema])
@@ -1031,10 +1519,17 @@ def update_integration(
 
     if integration_update.api_key is not None:
         db_integration.api_key = integration_update.api_key
+    if integration_update.account_email is not None:
+        db_integration.account_email = integration_update.account_email
     if integration_update.sync_frequency is not None:
         db_integration.sync_frequency = integration_update.sync_frequency
     if integration_update.connected is not None:
         db_integration.connected = integration_update.connected
+
+    if app_name == "gmail" and integration_update.connected is False:
+        db_integration.oauth_token = None
+        db_integration.account_email = None
+        db_integration.api_key = None
 
     if db_integration.connected:
         db_integration.last_sync = datetime.utcnow()
