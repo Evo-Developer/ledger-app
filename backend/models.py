@@ -26,6 +26,8 @@ class User(Base):
     investments = relationship("Investment", back_populates="user", cascade="all, delete-orphan")
     liabilities = relationship("Liability", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
+    assets = relationship("Asset", back_populates="user", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
 
 
@@ -53,6 +55,35 @@ class Transaction(Base):
 
     # Relationships
     user = relationship("User", back_populates="transactions")
+
+
+class Asset(Base):
+    __tablename__ = "assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    type = Column(String(100), nullable=True)
+    value = Column(Float, nullable=False, default=0.0)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="assets")
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(String(1024), nullable=False)
+    content_type = Column(String(255), nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="documents")
 
 
 class Budget(Base):
