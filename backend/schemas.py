@@ -81,6 +81,56 @@ class Transaction(TransactionBase):
         from_attributes = True
 
 
+# Asset Schemas
+class AssetBase(BaseModel):
+    name: str
+    type: Optional[str] = None
+    value: float
+    description: Optional[str] = None
+
+
+class AssetCreate(AssetBase):
+    pass
+
+
+class AssetUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    value: Optional[float] = None
+    description: Optional[str] = None
+
+
+class Asset(AssetBase):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Document Schemas
+class DocumentBase(BaseModel):
+    title: str
+
+
+class DocumentCreate(DocumentBase):
+    pass
+
+
+class Document(DocumentBase):
+    id: int
+    user_id: int
+    file_name: str
+    content_type: Optional[str]
+    uploaded_at: datetime
+    url: str
+
+    class Config:
+        from_attributes = True
+
+
 # Budget Schemas
 class BudgetBase(BaseModel):
     category: str

@@ -432,7 +432,98 @@
     </div>
 
     <script>
-        const API_BASE_URL = window.location.origin + '/api';
+        function getApiBaseUrls() {
+            const urls = [];
+            const pushUrl = (value) => {
+                if (value && !urls.includes(value)) {
+                    urls.push(value);
+                }
+            };
+
+            pushUrl(window.API_BASE_URL);
+            pushUrl(window.location.origin + '/api');
+
+            if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port !== '8000') {
+                pushUrl(`${window.location.protocol}//${window.location.hostname}:8000/api`);
+            }
+
+            return urls;
+        }
+
+        async function parseResponseBody(response) {
+            if (response.status === 204) {
+                return null;
+            }
+
+            const text = await response.text();
+            if (!text) {
+                return null;
+            }
+
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            const isJson = contentType.includes('application/json') || contentType.includes('+json');
+
+            if (isJson) {
+                try {
+                    return JSON.parse(text);
+                } catch (error) {
+                    throw new Error('The API returned invalid JSON.');
+                }
+            }
+
+            return {
+                rawText: text,
+                isHtml: text.trim().startsWith('<')
+            };
+        }
+
+        function getErrorMessage(response, payload, fallbackMessage) {
+            if (payload && typeof payload === 'object' && !payload.isHtml) {
+                return payload.detail || payload.message || fallbackMessage;
+            }
+
+            if (payload && payload.isHtml) {
+                return 'The app reached an HTML page instead of the API. Check that the frontend is pointing to the backend.';
+            }
+
+            return fallbackMessage;
+        }
+
+        async function fetchApi(path, options = {}) {
+            const baseUrls = getApiBaseUrls();
+            let lastError = null;
+
+            for (let index = 0; index < baseUrls.length; index += 1) {
+                const baseUrl = baseUrls[index];
+
+                try {
+                    const response = await fetch(`${baseUrl}${path}`, options);
+                    const payload = await parseResponseBody(response);
+                    const shouldRetry = payload && payload.isHtml && index < baseUrls.length - 1;
+
+                    if (response.ok && !(payload && payload.isHtml)) {
+                        return { response, data: payload };
+                    }
+
+                    const fallbackMessage = `Request failed: ${response.status} ${response.statusText}`;
+                    const errorMessage = getErrorMessage(response, payload, fallbackMessage);
+
+                    if (shouldRetry) {
+                        lastError = new Error(errorMessage);
+                        continue;
+                    }
+
+                    throw new Error(errorMessage);
+                } catch (error) {
+                    lastError = error;
+                    if (index === baseUrls.length - 1) {
+                        throw error;
+                    }
+                }
+            }
+
+            throw lastError || new Error('API request failed');
+        }
 
         // Check if already logged in
         window.addEventListener('load', () => {
@@ -445,7 +536,7 @@
 
         async function verifyToken(token) {
             try {
-                const response = await fetch(`${API_BASE_URL}/auth/me`, {
+                const { response } = await fetchApi('/auth/me', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -514,23 +605,17 @@
 
             try {
                 const formData = new URLSearchParams();
+                formData.append('grant_type', 'password');
                 formData.append('username', username);
                 formData.append('password', password);
 
-                const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                const { data } = await fetchApi('/auth/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: formData
                 });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Login failed');
-                }
-
-                const data = await response.json();
                 
                 // Store token
                 localStorage.setItem('token', data.access_token);
@@ -575,7 +660,7 @@
             hideMessages();
 
             try {
-                const response = await fetch(`${API_BASE_URL}/auth/register`, {
+                await fetchApi('/auth/register', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -587,13 +672,6 @@
                         full_name: fullName
                     })
                 });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Registration failed');
-                }
-
-                const data = await response.json();
                 
                 // Show success
                 showSuccess('Account created successfully! Please login.');

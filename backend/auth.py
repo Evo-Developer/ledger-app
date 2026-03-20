@@ -77,8 +77,10 @@ def authenticate_user(db: Session, username: str, password: str, ip_address: str
     """
     Authenticate user
     """
-    user = db.query(User).filter(User.username == username).first()
+    user = db.query(User).filter((User.username == username) | (User.email == username)).first()
     if not user:
+        return False
+    if not user.is_active:
         return False
     if not verify_password(password, user.hashed_password):
         return False

@@ -1229,6 +1229,8 @@
             <button class="tab" data-tab="investments" onclick="switchTab('investments', this)">Investments</button>
             <button class="tab" data-tab="liabilities" onclick="switchTab('liabilities', this)">Liabilities</button>
             <button class="tab" data-tab="insights" onclick="switchTab('insights', this)">Insights</button>
+            <button class="tab" data-tab="assets" onclick="switchTab('assets', this)">Assets</button>
+            <button class="tab" data-tab="documents" onclick="switchTab('documents', this)">Documents</button>
             <button class="tab" data-tab="integrations" onclick="switchTab('integrations', this)">Integrations</button>
             <button class="tab" data-tab="audit" onclick="switchTab('audit', this)">Audit Trail</button>
         </div>
@@ -1358,6 +1360,24 @@
                 <button class="btn" onclick="openModal('liability')">+ Add Liability 📝</button>
             </div>
             <div id="liabilityList"></div>
+        </div>
+
+        <!-- Assets Section -->
+        <div id="assets-section" class="section" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">Asset Tracker 🏦</h2>
+                <button class="btn" onclick="openModal('asset')">+ Add Asset</button>
+            </div>
+            <div id="assetList"></div>
+        </div>
+
+        <!-- Documents Section -->
+        <div id="documents-section" class="section" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">Documents 📄</h2>
+                <button class="btn" onclick="openModal('document')">+ Upload Document</button>
+            </div>
+            <div id="documentList"></div>
         </div>
 
         <!-- Insights Section -->
@@ -1624,6 +1644,60 @@
         </div>
     </div>
 
+    <!-- Asset Modal -->
+    <div id="assetModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="assetModalTitle">Add Asset</h3>
+                <button class="close-btn" onclick="closeModal('asset')">&times;</button>
+            </div>
+            <form onsubmit="saveAsset(event)">
+                <input type="hidden" id="assetId">
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" id="assetName" required placeholder="e.g., House, Car" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Type</label>
+                    <input type="text" class="form-input" id="assetType" placeholder="Optional asset type" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Value (₹)</label>
+                    <input type="number" class="form-input" id="assetValue" required step="0.01" placeholder="0" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-textarea" id="assetDescription" placeholder="Optional notes"></textarea>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" class="btn" id="assetSaveBtn" style="flex: 1;">Add Asset</button>
+                    <button type="button" class="btn btn-success" id="assetUpdateBtn" style="flex: 1; display: none;" onclick="saveAsset(event, true)">Update Asset</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Document Modal -->
+    <div id="documentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="documentModalTitle">Upload Document</h3>
+                <button class="close-btn" onclick="closeModal('document')">&times;</button>
+            </div>
+            <form onsubmit="uploadDocument(event)">
+                <div class="form-group">
+                    <label class="form-label">Title</label>
+                    <input type="text" class="form-input" id="documentTitle" required placeholder="Property deed, ID proof" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">File</label>
+                    <input type="file" class="form-input" id="documentFile" required />
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Upload Document</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Budget Modal -->
     <div id="budgetModal" class="modal">
         <div class="modal-content">
@@ -1819,8 +1893,26 @@
             window.api = {
                 token: localStorage.getItem('token'),
 
+                getApiBaseUrls() {
+                    const urls = [];
+                    const pushUrl = (value) => {
+                        if (value && !urls.includes(value)) {
+                            urls.push(value);
+                        }
+                    };
+
+                    pushUrl(window.API_BASE_URL);
+                    pushUrl(window.location.origin + '/api');
+
+                    if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port !== '8000') {
+                        pushUrl(`${window.location.protocol}//${window.location.hostname}:8000/api`);
+                    }
+
+                    return urls;
+                },
+
                 getApiBaseUrl() {
-                    return window.API_BASE_URL || (window.location.origin + '/api');
+                    return this.getApiBaseUrls()[0];
                 },
 
                 setToken(token) {
@@ -1843,17 +1935,87 @@
                     return headers;
                 },
 
+                async parseResponseBody(response) {
+                    if (response.status === 204) {
+                        return null;
+                    }
+
+                    const text = await response.text();
+                    if (!text) {
+                        return null;
+                    }
+
+                    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+                    const isJson = contentType.includes('application/json') || contentType.includes('+json');
+
+                    if (isJson) {
+                        try {
+                            return JSON.parse(text);
+                        } catch (error) {
+                            throw new Error('The API returned invalid JSON.');
+                        }
+                    }
+
+                    return {
+                        rawText: text,
+                        isHtml: text.trim().startsWith('<'),
+                    };
+                },
+
+                getErrorMessage(response, payload, fallbackMessage) {
+                    if (payload && typeof payload === 'object' && !payload.isHtml) {
+                        return payload.detail || payload.message || fallbackMessage;
+                    }
+
+                    if (payload && payload.isHtml) {
+                        return 'The app reached an HTML page instead of the API. Check that the frontend is pointing to the backend.';
+                    }
+
+                    return fallbackMessage;
+                },
+
+                async fetchJson(endpoint, options = {}) {
+                    const baseUrls = this.getApiBaseUrls();
+                    let lastError = null;
+
+                    for (let index = 0; index < baseUrls.length; index += 1) {
+                        const baseUrl = baseUrls[index];
+                        const url = `${baseUrl}${endpoint}`;
+
+                        try {
+                            const response = await fetch(url, options);
+                            const payload = await this.parseResponseBody(response);
+                            const shouldRetry = payload && payload.isHtml && index < baseUrls.length - 1;
+
+                            if (response.ok && !(payload && payload.isHtml)) {
+                                return { response, data: payload };
+                            }
+
+                            const fallbackMessage = `${response.status} ${response.statusText}`;
+                            const errorMessage = this.getErrorMessage(response, payload, fallbackMessage);
+
+                            if (shouldRetry) {
+                                lastError = new Error(errorMessage);
+                                continue;
+                            }
+
+                            throw new Error(errorMessage);
+                        } catch (error) {
+                            lastError = error;
+                            if (index === baseUrls.length - 1) {
+                                throw error;
+                            }
+                        }
+                    }
+
+                    throw lastError || new Error('API request failed');
+                },
+
                 async request(endpoint, options = {}) {
-                    const url = `${this.getApiBaseUrl()}${endpoint}`;
                     const header = { ...this.getHeaders(), ...(options.headers || {}) };
                     const config = { ...options, headers: header };
-                    const response = await fetch(url, config);
-                    if (!response.ok) {
-                        let err = `${response.status} ${response.statusText}`;
-                        try { const body = await response.json(); err = body.detail || body.message || err; } catch { }
-                        throw new Error(err);
-                    }
-                    return response.status === 204 ? null : await response.json();
+                    const { data } = await this.fetchJson(endpoint, config);
+                    return data;
                 },
 
                 async getCurrentUser() { return this.request('/auth/me'); },
@@ -1881,6 +2043,27 @@
                 async createLiability(l) { return this.request('/liabilities', { method: 'POST', body: JSON.stringify(l) }); },
                 async updateLiability(id,l) { return this.request(`/liabilities/${id}`, { method: 'PUT', body: JSON.stringify(l) }); },
                 async deleteLiability(id) { return this.request(`/liabilities/${id}`, { method: 'DELETE' }); },
+
+                async getAssets() { return this.request('/assets'); },
+                async createAsset(a) { return this.request('/assets', { method: 'POST', body: JSON.stringify(a) }); },
+                async updateAsset(id,a) { return this.request(`/assets/${id}`, { method: 'PUT', body: JSON.stringify(a) }); },
+                async deleteAsset(id) { return this.request(`/assets/${id}`, { method: 'DELETE' }); },
+
+                async getDocuments() { return this.request('/documents'); },
+                async uploadDocument(title, file) {
+                    const formData = new FormData();
+                    formData.append('title', title);
+                    formData.append('file', file);
+                    const headers = { ...this.getHeaders() };
+                    delete headers['Content-Type'];
+                    const { data } = await this.fetchJson('/documents', {
+                        method: 'POST',
+                        headers,
+                        body: formData,
+                    });
+                    return data;
+                },
+                async deleteDocument(id) { return this.request(`/documents/${id}`, { method: 'DELETE' }); },
 
                 async getIntegrations() { return this.request('/integrations'); },
                 async syncIntegration(appName) { return this.request(`/integrations/${appName}/sync`, { method: 'POST' }); },
@@ -1992,6 +2175,8 @@
             goals: 'db_goals',
             investments: 'db_investments',
             liabilities: 'db_liabilities',
+            assets: 'db_assets',
+            documents: 'db_documents',
             integrations: 'db_integrations',
             auditLog: 'db_audit_log',
             metadata: 'db_metadata'
@@ -2003,6 +2188,8 @@
         let goals = [];
         let investments = [];
         let liabilities = [];
+        let assets = [];
+        let documents = [];
         let integrations = {};
         let auditLog = [];
 
@@ -2026,12 +2213,14 @@
             static async load() {
                 console.log('📥 Loading data from API...');
                 try {
-                    const [txns, bdgts, gls, invs, libs, ints] = await Promise.all([
+                    const [txns, bdgts, gls, invs, libs, asts, docs, ints] = await Promise.all([
                         api.getTransactions().catch(() => []),
                         api.getBudgets().catch(() => []),
                         api.getGoals().catch(() => []),
                         api.getInvestments().catch(() => []),
                         api.getLiabilities().catch(() => []),
+                        api.getAssets().catch(() => []),
+                        api.getDocuments().catch(() => []),
                         api.getIntegrations().catch(() => [])
                     ]);
 
@@ -2067,6 +2256,18 @@
                         updatedAt: l.updated_at
                     }));
 
+                    assets = (asts || []).map(a => ({
+                        ...a,
+                        createdAt: a.created_at,
+                        updatedAt: a.updated_at
+                    }));
+
+                    documents = (docs || []).map(d => ({
+                        ...d,
+                        uploadedAt: d.uploaded_at,
+                        url: d.url
+                    }));
+
                     integrations = (ints || []).reduce((acc, i) => {
                         acc[i.app_name] = { ...i, lastError: null };
                         return acc;
@@ -2081,6 +2282,10 @@
                         transactions: transactions.length,
                         budgets: budgets.length,
                         goals: goals.length,
+                        investments: investments.length,
+                        liabilities: liabilities.length,
+                        assets: assets.length,
+                        documents: documents.length,
                         integrations: Object.keys(integrations).length
                     });
                 } catch (error) {
@@ -2356,10 +2561,12 @@
 
             const totalInvested = investments
                 .reduce((sum, inv) => sum + (parseFloat(inv.amount_invested ?? 0) || 0), 0);
+            const totalAssetsValue = assets
+                .reduce((sum, asset) => sum + (parseFloat(asset.value ?? 0) || 0), 0);
 
             const savings = income - expenses;
-            const assets = savings + totalInvested;
-            const balance = assets - totalLiabilities;
+            const computedAssets = savings + totalInvested + totalAssetsValue;
+            const balance = computedAssets - totalLiabilities;
 
             const savingsRate = income > 0 ? ((savings / income) * 100).toFixed(0) : 0;
             const liabilityCover = totalLiabilities > 0 ? ((savings / totalLiabilities) * 100).toFixed(0) : '—';
@@ -2940,6 +3147,176 @@
             } catch (error) {
                 console.error('❌ Delete goal error:', error);
                 showNotification('Failed to delete goal: ' + error.message, 'error');
+            }
+        }
+
+        function renderAssets() {
+            const list = document.getElementById('assetList');
+            if (!list) return;
+
+            if (assets.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏦</div>
+                        <p>No assets tracked yet. Add one to stay organized.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = assets.map(asset => `
+                <div class="goal-item">
+                    <div class="goal-header">
+                        <div class="goal-info">
+                            <h3>${asset.name}</h3>
+                            <p class="goal-target">Type: ${asset.type || 'General'}</p>
+                        </div>
+                        <div class="goal-progress-text">
+                            <div class="goal-current">Value: ${formatCurrency(asset.value)}</div>
+                            ${asset.description ? `<p style="color: var(--text-secondary); margin-top: 8px;">${asset.description}</p>` : ''}
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px; display: flex; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="editAsset(${asset.id})">Edit</button>
+                        <button class="btn btn-danger" onclick="deleteAsset(${asset.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function saveAsset(e, explicitUpdate = false) {
+            e.preventDefault();
+
+            const assetId = document.getElementById('assetId').value;
+            const payload = {
+                name: document.getElementById('assetName').value,
+                type: document.getElementById('assetType').value,
+                value: parseFloat(document.getElementById('assetValue').value),
+                description: document.getElementById('assetDescription').value || ''
+            };
+
+            try {
+                if (assetId) {
+                    const updated = await (typeof api.updateAsset === 'function'
+                        ? api.updateAsset(assetId, payload)
+                        : api.request(`/assets/${assetId}`, { method: 'PUT', body: JSON.stringify(payload) }));
+                    const idx = assets.findIndex(a => a.id == assetId);
+                    if (idx !== -1) {
+                        assets[idx] = { ...updated, createdAt: updated.created_at, updatedAt: updated.updated_at };
+                    }
+                    showNotification('Asset updated successfully!', 'success');
+                } else {
+                    const created = await (typeof api.createAsset === 'function'
+                        ? api.createAsset(payload)
+                        : api.request('/assets', { method: 'POST', body: JSON.stringify(payload) }));
+                    assets.push({ ...created, createdAt: created.created_at, updatedAt: created.updated_at });
+                    showNotification('Asset added successfully.', 'success');
+                }
+
+                closeModal('asset');
+                renderAssets();
+                updateOverview();
+            } catch (error) {
+                console.error('❌ Save asset error:', error);
+                showNotification('Failed to save asset: ' + error.message, 'error');
+            }
+        }
+
+        function editAsset(id) {
+            const asset = assets.find(a => a.id == id);
+            if (!asset) return;
+
+            document.getElementById('assetModalTitle').textContent = 'Edit Asset';
+            document.getElementById('assetId').value = asset.id;
+            document.getElementById('assetName').value = asset.name;
+            document.getElementById('assetType').value = asset.type || '';
+            document.getElementById('assetValue').value = asset.value;
+            document.getElementById('assetDescription').value = asset.description || '';
+            document.getElementById('assetSaveBtn').style.display = 'none';
+            document.getElementById('assetUpdateBtn').style.display = 'inline-flex';
+            openModal('asset');
+        }
+
+        async function deleteAsset(id) {
+            if (!confirm('Delete this asset?')) return;
+            try {
+                const apiDelete = typeof api.deleteAsset === 'function'
+                    ? api.deleteAsset.bind(api)
+                    : (assetId) => api.request(`/assets/${assetId}`, { method: 'DELETE' });
+
+                await apiDelete(id);
+                assets = assets.filter(a => a.id != id);
+                renderAssets();
+                updateOverview();
+                showNotification('Asset deleted.', 'success');
+            } catch (error) {
+                console.error('❌ Delete asset error:', error);
+                showNotification('Failed to delete asset: ' + error.message, 'error');
+            }
+        }
+
+        function renderDocuments() {
+            const list = document.getElementById('documentList');
+            if (!list) return;
+
+            if (documents.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📁</div>
+                        <p>No documents uploaded. Add important documents here.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = documents.map(doc => `
+                <div class="goal-item">
+                    <div class="goal-header" style="align-items: center; gap: 16px;">
+                        <div>
+                            <h3>${doc.title}</h3>
+                            <p class="goal-target">Filename: ${doc.file_name}</p>
+                        </div>
+                        <div class="goal-progress-text">
+                            <a class="btn btn-secondary" href="${doc.url}" target="_blank">Download</a>
+                            <button class="btn btn-danger" onclick="deleteDocument(${doc.id})">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function uploadDocument(e) {
+            e.preventDefault();
+            const title = document.getElementById('documentTitle').value;
+            const fileInput = document.getElementById('documentFile');
+            if (!fileInput.files.length) {
+                showNotification('Select a file to upload.', 'error');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            try {
+                const uploaded = await api.uploadDocument(title, file);
+                documents.push({ ...uploaded, uploadedAt: uploaded.uploaded_at, url: uploaded.url });
+                renderDocuments();
+                showNotification('Document uploaded successfully.', 'success');
+                closeModal('document');
+            } catch (error) {
+                console.error('❌ Document upload error:', error);
+                showNotification('Failed to upload document: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteDocument(id) {
+            if (!confirm('Delete this document?')) return;
+            try {
+                await api.deleteDocument(id);
+                documents = documents.filter(d => d.id != id);
+                renderDocuments();
+                showNotification('Document deleted.', 'success');
+            } catch (error) {
+                console.error('❌ Delete document error:', error);
+                showNotification('Failed to delete document: ' + error.message, 'error');
             }
         }
 
@@ -3578,7 +3955,7 @@
                 tabButton.classList.add('active');
             }
             
-            ['transactions', 'budgets', 'goals', 'investments', 'liabilities', 'insights', 'integrations', 'audit'].forEach(section => {
+            ['transactions', 'budgets', 'goals', 'investments', 'liabilities', 'assets', 'documents', 'insights', 'integrations', 'audit'].forEach(section => {
                 const sectionEl = document.getElementById(section + '-section');
                 if (sectionEl) sectionEl.style.display = 'none';
             });
@@ -3598,6 +3975,10 @@
                 renderInvestments();
             } else if (tab === 'liabilities') {
                 renderLiabilities();
+            } else if (tab === 'assets') {
+                renderAssets();
+            } else if (tab === 'documents') {
+                renderDocuments();
             }
         }
 
@@ -3651,6 +4032,19 @@
                 document.getElementById('budgetCategory').value = 'Food';
                 document.getElementById('budgetAmount').value = '';
                 document.getElementById('budgetSubmitBtn').textContent = 'Add Budget';
+            } else if (type === 'asset') {
+                document.getElementById('assetModalTitle').textContent = 'Add Asset';
+                document.getElementById('assetId').value = '';
+                document.getElementById('assetName').value = '';
+                document.getElementById('assetType').value = '';
+                document.getElementById('assetValue').value = '';
+                document.getElementById('assetDescription').value = '';
+                document.getElementById('assetSaveBtn').style.display = 'inline-flex';
+                document.getElementById('assetUpdateBtn').style.display = 'none';
+            } else if (type === 'document') {
+                document.getElementById('documentModalTitle').textContent = 'Upload Document';
+                document.getElementById('documentTitle').value = '';
+                document.getElementById('documentFile').value = null;
             }
             document.getElementById(type + 'Modal').classList.add('active');
         }

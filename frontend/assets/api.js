@@ -4,9 +4,28 @@ class API {
         this.token = localStorage.getItem('token');
     }
 
-    getApiBaseUrl() {
+    getApiBaseUrls() {
+        const urls = [];
+        const pushUrl = (value) => {
+            if (value && !urls.includes(value)) {
+                urls.push(value);
+            }
+        };
+
         // Allows overriding the base API URL from the page (e.g. for testing)
-        return window.API_BASE_URL || (window.location.origin + '/api');
+        pushUrl(window.API_BASE_URL);
+        pushUrl(window.location.origin + '/api');
+
+        // Local development sometimes serves the frontend without the /api proxy.
+        if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port !== '8000') {
+            pushUrl(`${window.location.protocol}//${window.location.hostname}:8000/api`);
+        }
+
+        return urls;
+    }
+
+    getApiBaseUrl() {
+        return this.getApiBaseUrls()[0];
     }
 
     setToken(token) {
@@ -29,9 +48,83 @@ class API {
         return headers;
     }
 
-    async request(endpoint, options = {}) {
-        const url = `${this.getApiBaseUrl()}${endpoint}`;
+    async parseResponseBody(response) {
+        if (response.status === 204) {
+            return null;
+        }
 
+        const text = await response.text();
+        if (!text) {
+            return null;
+        }
+
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        const isJson = contentType.includes('application/json') || contentType.includes('+json');
+
+        if (isJson) {
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                throw new Error('The API returned invalid JSON.');
+            }
+        }
+
+        return {
+            rawText: text,
+            isHtml: text.trim().startsWith('<'),
+        };
+    }
+
+    getErrorMessage(response, payload, fallbackMessage) {
+        if (payload && typeof payload === 'object' && !payload.isHtml) {
+            return payload.detail || payload.message || fallbackMessage;
+        }
+
+        if (payload && payload.isHtml) {
+            return 'The app reached an HTML page instead of the API. Check that the frontend is pointing to the backend.';
+        }
+
+        return fallbackMessage;
+    }
+
+    async fetchJson(endpoint, options = {}) {
+        const baseUrls = this.getApiBaseUrls();
+        let lastError = null;
+
+        for (let index = 0; index < baseUrls.length; index += 1) {
+            const baseUrl = baseUrls[index];
+            const url = `${baseUrl}${endpoint}`;
+
+            try {
+                const response = await fetch(url, options);
+                const payload = await this.parseResponseBody(response);
+                const shouldRetry = payload && payload.isHtml && index < baseUrls.length - 1;
+
+                if (response.ok && !(payload && payload.isHtml)) {
+                    return { response, data: payload };
+                }
+
+                const fallbackMessage = `Request failed: ${response.status} ${response.statusText}`;
+                const errorMessage = this.getErrorMessage(response, payload, fallbackMessage);
+
+                if (shouldRetry) {
+                    lastError = new Error(errorMessage);
+                    continue;
+                }
+
+                throw new Error(errorMessage);
+            } catch (error) {
+                lastError = error;
+                if (index === baseUrls.length - 1) {
+                    throw error;
+                }
+            }
+        }
+
+        throw lastError || new Error('API request failed');
+    }
+
+    async request(endpoint, options = {}) {
         // Merge headers so callers can override default headers when needed
         const headers = {
             ...this.getHeaders(),
@@ -44,7 +137,7 @@ class API {
         };
 
         try {
-            const response = await fetch(url, config);
+            const { response, data } = await this.fetchJson(endpoint, config);
             
             if (response.status === 401) {
                 // Unauthorized - clear token and redirect to login
@@ -53,25 +146,7 @@ class API {
                 throw new Error('Unauthorized');
             }
 
-            if (!response.ok) {
-                let errorMessage = `Request failed: ${response.status} ${response.statusText}`;
-                try {
-                    const error = await response.json();
-                    errorMessage = error.detail || error.message || JSON.stringify(error);
-                } catch (jsonErr) {
-                    try {
-                        const text = await response.text();
-                        if (text) {
-                            errorMessage = text;
-                        }
-                    } catch (textErr) {
-                        // fallback to HTTP status if text fails too
-                    }
-                }
-                throw new Error(errorMessage);
-            }
-
-            return await response.json();
+            return data;
         } catch (error) {
             console.error('API request failed:', error);
             throw error;
@@ -88,29 +163,17 @@ class API {
 
     async login(username, password) {
         const formData = new URLSearchParams();
+        formData.append('grant_type', 'password');
         formData.append('username', username);
         formData.append('password', password);
 
-        const response = await fetch(`${this.getApiBaseUrl()}/auth/login`, {
+        const { data } = await this.fetchJson('/auth/login', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: formData,
         });
-
-        if (!response.ok) {
-            let message = 'Login failed';
-            try {
-                const error = await response.json();
-                message = error.detail || error.message || message;
-            } catch {
-                // ignore
-            }
-            throw new Error(message);
-        }
-
-        const data = await response.json();
         this.setToken(data.access_token);
         return data;
     }
@@ -132,31 +195,18 @@ class API {
     }
 
     async uploadTransactionsCsv(file) {
-        const url = `${this.getApiBaseUrl()}/transactions/upload`;
         const formData = new FormData();
         formData.append('file', file);
 
         const headers = { ...this.getHeaders() };
         delete headers['Content-Type'];
 
-        const response = await fetch(url, {
+        const { data } = await this.fetchJson('/transactions/upload', {
             method: 'POST',
             body: formData,
             headers,
         });
-
-        if (!response.ok) {
-            let errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
-            try {
-                const errorBody = await response.json();
-                errorMessage = errorBody.detail || errorBody.message || errorMessage;
-            } catch (err) {
-                // ignore parse error
-            }
-            throw new Error(errorMessage);
-        }
-
-        return await response.json();
+        return data;
     }
 
     async updateTransaction(id, transaction) {

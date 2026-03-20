@@ -1,15 +1,20 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
 import json
+import os
+from uuid import uuid4
 
 from database import get_db, init_db, engine
-from models import User, Transaction, Budget, Goal, Investment, Liability, Integration, AuditLog, Base
+from models import User, Transaction, Asset, Document, Budget, Goal, Investment, Liability, Integration, AuditLog, Base
 from schemas import (
     UserCreate, User as UserSchema, Transaction as TransactionSchema,
+    Asset as AssetSchema, AssetCreate, AssetUpdate,
+    Document as DocumentSchema,
     TransactionCreate, TransactionUpdate, Budget as BudgetSchema,
     BudgetCreate, BudgetUpdate, Goal as GoalSchema, GoalCreate, GoalUpdate,
     Investment as InvestmentSchema, InvestmentCreate, InvestmentUpdate,
@@ -43,6 +48,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static upload directory
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount('/uploads', StaticFiles(directory=UPLOAD_DIR), name='uploads')
 
 
 # Helper function to log audit
@@ -127,23 +137,42 @@ async def register(user: UserCreate, request: Request, db: Session = Depends(get
 
 @app.post("/api/auth/login", response_model=Token)
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    request: Request = None,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Login and get access token"""
     # Get client IP
-    client_ip = get_client_ip(request) if request else "unknown"
-    
-    # Authenticate user (includes rate limiting)
-    user = authenticate_user(db, form_data.username, form_data.password, client_ip)
+    client_ip = get_client_ip(request)
+
+    # Support both application/x-www-form-urlencoded and application/json credentials
+    username = None
+    password = None
+
+    content_type = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if content_type == "application/json":
+        payload = await request.json()
+        username = payload.get("username")
+        password = payload.get("password")
+    else:
+        form_data = await request.form()
+        username = form_data.get("username")
+        password = form_data.get("password")
+
+    if not username or not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username and password are required"
+        )
+
+    # Authenticate user
+    user = authenticate_user(db, username, password, client_ip)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
@@ -320,8 +349,133 @@ def update_transaction(
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Update transaction error: {type(exc).__name__}: {exc}")
-    
-    return db_transaction
+
+
+@app.get("/api/assets", response_model=List[AssetSchema])
+def get_assets(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(Asset).filter(Asset.user_id == current_user.id).all()
+
+
+@app.post("/api/assets", response_model=AssetSchema)
+def create_asset(
+    asset: AssetCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    db_asset = Asset(**asset.dict(), user_id=current_user.id)
+    db.add(db_asset)
+    db.commit()
+    db.refresh(db_asset)
+    return db_asset
+
+
+@app.put("/api/assets/{asset_id}", response_model=AssetSchema)
+def update_asset(
+    asset_id: int,
+    asset: AssetUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    db_asset = db.query(Asset).filter(Asset.id == asset_id, Asset.user_id == current_user.id).first()
+    if not db_asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    data = asset.dict(exclude_unset=True)
+    for key, value in data.items():
+        setattr(db_asset, key, value)
+
+    db.commit()
+    db.refresh(db_asset)
+    return db_asset
+
+
+@app.delete("/api/assets/{asset_id}")
+def delete_asset(
+    asset_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    db_asset = db.query(Asset).filter(Asset.id == asset_id, Asset.user_id == current_user.id).first()
+    if not db_asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    db.delete(db_asset)
+    db.commit()
+    return {"message": "Asset deleted successfully"}
+
+
+@app.get("/api/documents", response_model=List[DocumentSchema])
+def get_documents(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    docs = db.query(Document).filter(Document.user_id == current_user.id).all()
+    return [
+        DocumentSchema(
+            id=d.id,
+            user_id=d.user_id,
+            title=d.title,
+            file_name=d.file_name,
+            content_type=d.content_type,
+            uploaded_at=d.uploaded_at,
+            url=f"/uploads/{os.path.basename(d.file_path)}"
+        ) for d in docs
+    ]
+
+
+@app.post("/api/documents", response_model=DocumentSchema)
+def upload_document(
+    title: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    filename = f"{uuid4().hex}_{file.filename}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    with open(file_path, "wb") as f:
+        f.write(file.file.read())
+
+    db_doc = Document(
+        user_id=current_user.id,
+        title=title,
+        file_name=file.filename,
+        file_path=file_path,
+        content_type=file.content_type,
+    )
+    db.add(db_doc)
+    db.commit()
+    db.refresh(db_doc)
+
+    return DocumentSchema(
+        id=db_doc.id,
+        user_id=db_doc.user_id,
+        title=db_doc.title,
+        file_name=db_doc.file_name,
+        content_type=db_doc.content_type,
+        uploaded_at=db_doc.uploaded_at,
+        url=f"/uploads/{os.path.basename(db_doc.file_path)}"
+    )
+
+
+@app.delete("/api/documents/{document_id}")
+def delete_document(
+    document_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    db_doc = db.query(Document).filter(Document.id == document_id, Document.user_id == current_user.id).first()
+    if not db_doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if os.path.exists(db_doc.file_path):
+        os.remove(db_doc.file_path)
+
+    db.delete(db_doc)
+    db.commit()
+    return {"message": "Document deleted successfully"}
 
 
 @app.delete("/api/transactions/{transaction_id}")
