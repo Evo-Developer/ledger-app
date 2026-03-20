@@ -130,6 +130,72 @@ class Goal(GoalBase):
         from_attributes = True
 
 
+# Investment Schemas
+class InvestmentBase(BaseModel):
+    name: str
+    type: str
+    amount_invested: float
+    current_value: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class InvestmentCreate(InvestmentBase):
+    pass
+
+
+class InvestmentUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    amount_invested: Optional[float] = None
+    current_value: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class Investment(InvestmentBase):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Liability Schemas
+class LiabilityBase(BaseModel):
+    lender: str
+    amount: float
+    outstanding: float
+    interest_rate: Optional[float] = None
+    monthly_payment: Optional[float] = None
+    due_date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class LiabilityCreate(LiabilityBase):
+    pass
+
+
+class LiabilityUpdate(BaseModel):
+    lender: Optional[str] = None
+    amount: Optional[float] = None
+    outstanding: Optional[float] = None
+    interest_rate: Optional[float] = None
+    monthly_payment: Optional[float] = None
+    due_date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class Liability(LiabilityBase):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Integration Schemas
 class IntegrationBase(BaseModel):
     app_name: str

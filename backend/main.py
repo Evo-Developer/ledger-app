@@ -7,11 +7,13 @@ from typing import List, Optional
 import json
 
 from database import get_db, init_db, engine
-from models import User, Transaction, Budget, Goal, Integration, AuditLog, Base
+from models import User, Transaction, Budget, Goal, Investment, Liability, Integration, AuditLog, Base
 from schemas import (
     UserCreate, User as UserSchema, Transaction as TransactionSchema,
     TransactionCreate, TransactionUpdate, Budget as BudgetSchema,
     BudgetCreate, BudgetUpdate, Goal as GoalSchema, GoalCreate, GoalUpdate,
+    Investment as InvestmentSchema, InvestmentCreate, InvestmentUpdate,
+    Liability as LiabilitySchema, LiabilityCreate, LiabilityUpdate,
     Integration as IntegrationSchema, IntegrationCreate, IntegrationUpdate,
     AuditLog as AuditLogSchema, Token, DashboardStats, TransactionFilter,
     AuditLogFilter, LoginRequest
@@ -21,6 +23,7 @@ from auth import (
     get_current_active_user, ACCESS_TOKEN_EXPIRE_MINUTES,
     get_client_ip, check_registration_rate_limit
 )
+from integration_providers import get_provider
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -295,6 +298,63 @@ def create_budget(
     return db_budget
 
 
+@app.put("/api/budgets/{budget_id}", response_model=BudgetSchema)
+def update_budget(
+    budget_id: int,
+    budget_update: BudgetUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing budget"""
+    db_budget = db.query(Budget).filter(
+        Budget.user_id == current_user.id,
+        Budget.id == budget_id
+    ).first()
+
+    if not db_budget:
+        raise HTTPException(status_code=404, detail="Budget not found")
+
+    for field, value in budget_update.dict(exclude_unset=True).items():
+        setattr(db_budget, field, value)
+
+    db.commit()
+    db.refresh(db_budget)
+
+    log_audit(db, current_user.id, "update", "budget", db_budget.id,
+              f"Updated budget for {db_budget.category}",
+              details=budget_update.dict(exclude_unset=True),
+              user_agent=request.headers.get("user-agent"))
+
+    return db_budget
+
+
+@app.delete("/api/budgets/{budget_id}", response_model=BudgetSchema)
+def delete_budget(
+    budget_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a budget"""
+    db_budget = db.query(Budget).filter(
+        Budget.user_id == current_user.id,
+        Budget.id == budget_id
+    ).first()
+
+    if not db_budget:
+        raise HTTPException(status_code=404, detail="Budget not found")
+
+    db.delete(db_budget)
+    db.commit()
+
+    log_audit(db, current_user.id, "delete", "budget", budget_id,
+              f"Deleted budget for {db_budget.category}",
+              user_agent=request.headers.get("user-agent"))
+
+    return db_budget
+
+
 # ==================== Goal Endpoints ====================
 
 @app.get("/api/goals", response_model=List[GoalSchema])
@@ -326,6 +386,241 @@ def create_goal(
               user_agent=request.headers.get("user-agent"))
     
     return db_goal
+
+
+@app.put("/api/goals/{goal_id}", response_model=GoalSchema)
+def update_goal(
+    goal_id: int,
+    goal_update: GoalUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing goal"""
+    db_goal = db.query(Goal).filter(
+        Goal.user_id == current_user.id,
+        Goal.id == goal_id
+    ).first()
+
+    if not db_goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    for field, value in goal_update.dict(exclude_unset=True).items():
+        setattr(db_goal, field, value)
+
+    db.commit()
+    db.refresh(db_goal)
+
+    log_audit(db, current_user.id, "update", "goal", db_goal.id,
+              f"Updated goal: {db_goal.name}",
+              details=goal_update.dict(exclude_unset=True),
+              user_agent=request.headers.get("user-agent"))
+
+    return db_goal
+
+
+@app.delete("/api/goals/{goal_id}", response_model=GoalSchema)
+def delete_goal(
+    goal_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a goal"""
+    db_goal = db.query(Goal).filter(
+        Goal.user_id == current_user.id,
+        Goal.id == goal_id
+    ).first()
+
+    if not db_goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    db.delete(db_goal)
+    db.commit()
+
+    log_audit(db, current_user.id, "delete", "goal", goal_id,
+              f"Deleted goal: {db_goal.name}",
+              user_agent=request.headers.get("user-agent"))
+
+    return db_goal
+
+
+# ==================== Investment Endpoints ====================
+
+@app.get("/api/investments", response_model=List[InvestmentSchema])
+def get_investments(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all investments for current user"""
+    return db.query(Investment).filter(Investment.user_id == current_user.id).all()
+
+
+@app.post("/api/investments", response_model=InvestmentSchema)
+def create_investment(
+    investment: InvestmentCreate,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new investment record"""
+    db_investment = Investment(**investment.dict(), user_id=current_user.id)
+    db.add(db_investment)
+    db.commit()
+    db.refresh(db_investment)
+    
+    log_audit(db, current_user.id, "create", "investment", db_investment.id,
+              f"Added investment: {investment.name}",
+              details=investment.dict(),
+              user_agent=request.headers.get("user-agent"))
+    
+    return db_investment
+
+
+@app.put("/api/investments/{investment_id}", response_model=InvestmentSchema)
+def update_investment(
+    investment_id: int,
+    investment_update: InvestmentUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing investment"""
+    db_investment = db.query(Investment).filter(
+        Investment.user_id == current_user.id,
+        Investment.id == investment_id
+    ).first()
+
+    if not db_investment:
+        raise HTTPException(status_code=404, detail="Investment not found")
+
+    for field, value in investment_update.dict(exclude_unset=True).items():
+        setattr(db_investment, field, value)
+
+    db.commit()
+    db.refresh(db_investment)
+
+    log_audit(db, current_user.id, "update", "investment", db_investment.id,
+              f"Updated investment: {db_investment.name}",
+              details=investment_update.dict(exclude_unset=True),
+              user_agent=request.headers.get("user-agent"))
+
+    return db_investment
+
+
+@app.delete("/api/investments/{investment_id}", response_model=InvestmentSchema)
+def delete_investment(
+    investment_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an investment record"""
+    db_investment = db.query(Investment).filter(
+        Investment.user_id == current_user.id,
+        Investment.id == investment_id
+    ).first()
+
+    if not db_investment:
+        raise HTTPException(status_code=404, detail="Investment not found")
+
+    db.delete(db_investment)
+    db.commit()
+
+    log_audit(db, current_user.id, "delete", "investment", investment_id,
+              f"Deleted investment: {db_investment.name}",
+              user_agent=request.headers.get("user-agent"))
+
+    return db_investment
+
+
+# ==================== Liability Endpoints ====================
+
+@app.get("/api/liabilities", response_model=List[LiabilitySchema])
+def get_liabilities(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all liabilities for current user"""
+    return db.query(Liability).filter(Liability.user_id == current_user.id).all()
+
+
+@app.post("/api/liabilities", response_model=LiabilitySchema)
+def create_liability(
+    liability: LiabilityCreate,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new liability record"""
+    db_liability = Liability(**liability.dict(), user_id=current_user.id)
+    db.add(db_liability)
+    db.commit()
+    db.refresh(db_liability)
+
+    log_audit(db, current_user.id, "create", "liability", db_liability.id,
+              f"Added liability: {liability.lender}",
+              details=liability.dict(),
+              user_agent=request.headers.get("user-agent"))
+
+    return db_liability
+
+
+@app.put("/api/liabilities/{liability_id}", response_model=LiabilitySchema)
+def update_liability(
+    liability_id: int,
+    liability_update: LiabilityUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing liability"""
+    db_liability = db.query(Liability).filter(
+        Liability.user_id == current_user.id,
+        Liability.id == liability_id
+    ).first()
+
+    if not db_liability:
+        raise HTTPException(status_code=404, detail="Liability not found")
+
+    for field, value in liability_update.dict(exclude_unset=True).items():
+        setattr(db_liability, field, value)
+
+    db.commit()
+    db.refresh(db_liability)
+
+    log_audit(db, current_user.id, "update", "liability", db_liability.id,
+              f"Updated liability: {db_liability.lender}",
+              details=liability_update.dict(exclude_unset=True),
+              user_agent=request.headers.get("user-agent"))
+
+    return db_liability
+
+
+@app.delete("/api/liabilities/{liability_id}", response_model=LiabilitySchema)
+def delete_liability(
+    liability_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a liability record"""
+    db_liability = db.query(Liability).filter(
+        Liability.user_id == current_user.id,
+        Liability.id == liability_id
+    ).first()
+
+    if not db_liability:
+        raise HTTPException(status_code=404, detail="Liability not found")
+
+    db.delete(db_liability)
+    db.commit()
+
+    log_audit(db, current_user.id, "delete", "liability", liability_id,
+              f"Deleted liability: {db_liability.lender}",
+              user_agent=request.headers.get("user-agent"))
+
+    return db_liability
 
 
 # ==================== Integration Endpoints ====================
@@ -384,6 +679,69 @@ def create_integration(
     return db_integration
 
 
+@app.put("/api/integrations/{app_name}", response_model=IntegrationSchema)
+def update_integration(
+    app_name: str,
+    integration_update: IntegrationUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing integration (e.g., disconnect or update credentials)."""
+    db_integration = db.query(Integration).filter(
+        Integration.user_id == current_user.id,
+        Integration.app_name == app_name
+    ).first()
+
+    if not db_integration:
+        raise HTTPException(status_code=404, detail="Integration not found")
+
+    if integration_update.api_key is not None:
+        db_integration.api_key = integration_update.api_key
+    if integration_update.sync_frequency is not None:
+        db_integration.sync_frequency = integration_update.sync_frequency
+    if integration_update.connected is not None:
+        db_integration.connected = integration_update.connected
+
+    if db_integration.connected:
+        db_integration.last_sync = datetime.utcnow()
+
+    db.commit()
+    db.refresh(db_integration)
+
+    log_audit(db, current_user.id, "update", "integration", db_integration.id,
+              f"Updated integration {app_name}",
+              user_agent=request.headers.get("user-agent"))
+
+    return db_integration
+
+
+@app.delete("/api/integrations/{app_name}", response_model=IntegrationSchema)
+def delete_integration(
+    app_name: str,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an integration configuration."""
+    integration = db.query(Integration).filter(
+        Integration.user_id == current_user.id,
+        Integration.app_name == app_name
+    ).first()
+
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found")
+
+    db.delete(integration)
+    db.commit()
+
+    log_audit(db, current_user.id, "delete", "integration", app_name,
+              f"Deleted integration {app_name}",
+              user_agent=request.headers.get("user-agent"))
+
+    return integration
+
+
 @app.post("/api/integrations/{app_name}/sync")
 def sync_integration(
     app_name: str,
@@ -396,42 +754,55 @@ def sync_integration(
         Integration.user_id == current_user.id,
         Integration.app_name == app_name
     ).first()
-    
+
     if not integration or not integration.connected:
         raise HTTPException(status_code=404, detail="Integration not found or not connected")
-    
-    # Mock sync - in production, this would call actual APIs
-    sample_data = {
-        "phonepe": [
-            {"description": "UPI to Swiggy", "amount": 450, "category": "Food", "type": "expense"},
-            {"description": "DTH Recharge", "amount": 299, "category": "Bills", "type": "expense"},
-        ],
-        "groww": [
-            {"description": "Mutual Fund SIP", "amount": 5000, "category": "Investment", "type": "expense"},
-        ],
-    }
-    
+
+    # Use a provider-based integration system.
+    provider = get_provider(integration, current_user)
+
+    try:
+        fetched_transactions = provider.fetch_transactions()
+    except Exception as e:
+        # Mark integration as disconnected on failure so UI reflects connection issues
+        integration.connected = False
+        db.commit()
+        raise HTTPException(status_code=502, detail=str(e))
+
     synced_transactions = []
-    if app_name in sample_data:
-        for trans_data in sample_data[app_name]:
-            db_transaction = Transaction(
-                user_id=current_user.id,
-                synced=True,
-                source=app_name,
-                date=datetime.utcnow(),
-                **trans_data
-            )
-            db.add(db_transaction)
-            synced_transactions.append(trans_data)
-    
+    for trans_data in fetched_transactions:
+        # Normalize incoming transaction fields
+        tx_type = trans_data.get("type") or trans_data.get("transaction_type") or "expense"
+        tx_date = trans_data.get("date") or trans_data.get("timestamp")
+
+        # Ensure date is parsable (fallback to now)
+        try:
+            parsed_date = datetime.fromisoformat(tx_date) if tx_date else datetime.utcnow()
+        except Exception:
+            parsed_date = datetime.utcnow()
+
+        db_transaction = Transaction(
+            user_id=current_user.id,
+            synced=True,
+            source=app_name,
+            date=parsed_date,
+            type=tx_type,
+            description=trans_data.get("description") or "Imported transaction",
+            amount=float(trans_data.get("amount") or 0),
+            category=trans_data.get("category") or "Imported",
+            notes=trans_data.get("notes") or None
+        )
+        db.add(db_transaction)
+        synced_transactions.append(db_transaction)
+
     integration.last_sync = datetime.utcnow()
     db.commit()
-    
+
     log_audit(db, current_user.id, "sync", "transaction", app_name,
               f"Synced {len(synced_transactions)} transactions from {app_name}",
               details={"count": len(synced_transactions)},
               user_agent=request.headers.get("user-agent"))
-    
+
     return {"message": f"Synced {len(synced_transactions)} transactions", "count": len(synced_transactions)}
 
 

@@ -149,6 +149,19 @@ class API {
         });
     }
 
+    async updateBudget(id, budget) {
+        return this.request(`/budgets/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(budget),
+        });
+    }
+
+    async deleteBudget(id) {
+        return this.request(`/budgets/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
     // Goals
     async getGoals() {
         return this.request('/goals');
@@ -161,6 +174,69 @@ class API {
         });
     }
 
+    async updateGoal(id, goal) {
+        return this.request(`/goals/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(goal),
+        });
+    }
+
+    async deleteGoal(id) {
+        return this.request(`/goals/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
+    // Investments
+    async getInvestments() {
+        return this.request('/investments');
+    }
+
+    async createInvestment(investment) {
+        return this.request('/investments', {
+            method: 'POST',
+            body: JSON.stringify(investment),
+        });
+    }
+
+    async updateInvestment(id, investment) {
+        return this.request(`/investments/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(investment),
+        });
+    }
+
+    async deleteInvestment(id) {
+        return this.request(`/investments/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
+    // Liabilities
+    async getLiabilities() {
+        return this.request('/liabilities');
+    }
+
+    async createLiability(liability) {
+        return this.request('/liabilities', {
+            method: 'POST',
+            body: JSON.stringify(liability),
+        });
+    }
+
+    async updateLiability(id, liability) {
+        return this.request(`/liabilities/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(liability),
+        });
+    }
+
+    async deleteLiability(id) {
+        return this.request(`/liabilities/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
     // Integrations
     async getIntegrations() {
         return this.request('/integrations');
@@ -170,6 +246,19 @@ class API {
         return this.request('/integrations', {
             method: 'POST',
             body: JSON.stringify(integration),
+        });
+    }
+
+    async updateIntegration(appName, update) {
+        return this.request(`/integrations/${appName}`, {
+            method: 'PUT',
+            body: JSON.stringify(update),
+        });
+    }
+
+    async deleteIntegration(appName) {
+        return this.request(`/integrations/${appName}`, {
+            method: 'DELETE',
         });
     }
 

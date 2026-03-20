@@ -23,6 +23,8 @@ class User(Base):
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
     budgets = relationship("Budget", back_populates="user", cascade="all, delete-orphan")
     goals = relationship("Goal", back_populates="user", cascade="all, delete-orphan")
+    investments = relationship("Investment", back_populates="user", cascade="all, delete-orphan")
+    liabilities = relationship("Liability", back_populates="user", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
 
@@ -79,6 +81,42 @@ class Goal(Base):
 
     # Relationships
     user = relationship("User", back_populates="goals")
+
+
+class Investment(Base):
+    __tablename__ = "investments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    type = Column(String(100), nullable=False)
+    amount_invested = Column(Float, nullable=False)
+    current_value = Column(Float, nullable=True)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="investments")
+
+
+class Liability(Base):
+    __tablename__ = "liabilities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    lender = Column(String(255), nullable=False)
+    amount = Column(Float, nullable=False)
+    outstanding = Column(Float, nullable=False)
+    interest_rate = Column(Float, nullable=True)
+    monthly_payment = Column(Float, nullable=True)
+    due_date = Column(DateTime, nullable=True)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="liabilities")
 
 
 class Integration(Base):

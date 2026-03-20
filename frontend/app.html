@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ledger — Personal Finance</title>
+    <title>FinApp — Personal Finance</title>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * {
@@ -642,6 +642,13 @@
             margin-bottom: 12px;
         }
 
+        .goal-suggestion {
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
         .goal-header {
             display: flex;
             justify-content: space-between;
@@ -682,6 +689,14 @@
             padding: 24px;
             border: 1px solid var(--border);
             box-shadow: var(--shadow);
+            max-width: 420px;
+            margin: 0 auto;
+        }
+
+        .chart-container canvas {
+            width: 100% !important;
+            height: auto !important;
+            max-height: 340px;
         }
 
         .tabs {
@@ -780,6 +795,11 @@
             border-radius: var(--radius) var(--radius) 0 0;
         }
 
+        .integration-card.failed {
+            border-color: var(--danger);
+            background: rgba(239, 68, 68, 0.08);
+        }
+
         .integration-header {
             display: flex;
             justify-content: space-between;
@@ -806,6 +826,18 @@
         .status-disconnected {
             background: var(--border);
             color: var(--text-secondary);
+        }
+
+        .status-failed {
+            background: var(--danger);
+            color: white;
+        }
+
+        .integration-error {
+            color: var(--danger);
+            font-size: 13px;
+            margin-bottom: 8px;
+            word-break: break-word;
         }
 
         .integration-title {
@@ -1138,13 +1170,14 @@
             .audit-table td {
                 padding: 8px;
             }
+
         }
     </style>
 </head>
 <body>
     <div class="app-container">
         <header>
-            <h1>Ledger</h1>
+            <h1>FinApp</h1>
             <p class="subtitle">Track your finances with clarity • Database-backed with full audit trail</p>
             <p class="subtitle" id="backendStatus" style="font-size:13px; opacity:0.85; margin-top: 4px;">Checking backend…</p>
         </header>
@@ -1178,6 +1211,8 @@
             <button class="tab active" onclick="switchTab('transactions')">Transactions</button>
             <button class="tab" onclick="switchTab('budgets')">Budgets</button>
             <button class="tab" onclick="switchTab('goals')">Goals</button>
+            <button class="tab" onclick="switchTab('investments')">Investments</button>
+            <button class="tab" onclick="switchTab('liabilities')">Liabilities</button>
             <button class="tab" onclick="switchTab('insights')">Insights</button>
             <button class="tab" onclick="switchTab('integrations')">Integrations</button>
             <button class="tab" onclick="switchTab('audit')">Audit Trail</button>
@@ -1241,6 +1276,9 @@
                             <option value="gpay">Google Pay</option>
                             <option value="cred">CRED</option>
                             <option value="zerodha">Zerodha</option>
+                            <option value="hdfc">HDFC Bank</option>
+                            <option value="sbi">SBI Bank</option>
+                            <option value="icici">ICICI Bank</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -1270,8 +1308,8 @@
         <!-- Budgets Section -->
         <div id="budgets-section" class="section" style="display: none;">
             <div class="section-header">
-                <h2 class="section-title">Budget Categories</h2>
-                <button class="btn" onclick="openModal('budget')">+ Add Budget</button>
+                <h2 class="section-title">Budget Categories 💰</h2>
+                <button class="btn" onclick="openModal('budget')">+ Add Budget 🧾</button>
             </div>
             <div id="budgetList"></div>
         </div>
@@ -1279,10 +1317,28 @@
         <!-- Goals Section -->
         <div id="goals-section" class="section" style="display: none;">
             <div class="section-header">
-                <h2 class="section-title">Savings Goals</h2>
-                <button class="btn" onclick="openModal('goal')">+ Add Goal</button>
+                <h2 class="section-title">Savings Goals 🎯</h2>
+                <button class="btn" onclick="openModal('goal')">+ Add Goal ✨</button>
             </div>
             <div id="goalList"></div>
+        </div>
+
+        <!-- Investments Section -->
+        <div id="investments-section" class="section" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">Investments 📈</h2>
+                <button class="btn" onclick="openModal('investment')">+ Add Investment 💼</button>
+            </div>
+            <div id="investmentList"></div>
+        </div>
+
+        <!-- Liabilities Section -->
+        <div id="liabilities-section" class="section" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">Liabilities 🏦</h2>
+                <button class="btn" onclick="openModal('liability')">+ Add Liability 📝</button>
+            </div>
+            <div id="liabilityList"></div>
         </div>
 
         <!-- Insights Section -->
@@ -1297,13 +1353,6 @@
         <div id="integrations-section" class="section" style="display: none;">
             <h2 class="section-title" style="margin-bottom: 20px;">Connected Apps</h2>
             
-            <div class="alert">
-                <div class="alert-icon">ℹ️</div>
-                <div class="alert-content">
-                    <div class="alert-title">API Integration Demo</div>
-                    <div class="alert-text">This is a demonstration of how your app would connect to financial services. All data is stored persistently in the database.</div>
-                </div>
-            </div>
 
             <div class="integration-grid">
                 <div class="integration-card" onclick="toggleIntegration('phonepe')">
@@ -1381,6 +1430,45 @@
                     <div class="sync-info">
                         <span id="zerodha-sync">Never synced</span>
                         <span id="zerodha-count">0 trades</span>
+                    </div>
+                </div>
+
+                <div class="integration-card" onclick="toggleIntegration('hdfc')">
+                    <div class="integration-header">
+                        <div class="integration-icon">🏦</div>
+                        <span class="integration-status status-disconnected" id="hdfc-status">Connect</span>
+                    </div>
+                    <h3 class="integration-title">HDFC Bank</h3>
+                    <p class="integration-description">Sync your HDFC bank account transactions</p>
+                    <div class="sync-info">
+                        <span id="hdfc-sync">Never synced</span>
+                        <span id="hdfc-count">0 transactions</span>
+                    </div>
+                </div>
+
+                <div class="integration-card" onclick="toggleIntegration('sbi')">
+                    <div class="integration-header">
+                        <div class="integration-icon">🏦</div>
+                        <span class="integration-status status-disconnected" id="sbi-status">Connect</span>
+                    </div>
+                    <h3 class="integration-title">SBI Bank</h3>
+                    <p class="integration-description">Sync your SBI bank account transactions</p>
+                    <div class="sync-info">
+                        <span id="sbi-sync">Never synced</span>
+                        <span id="sbi-count">0 transactions</span>
+                    </div>
+                </div>
+
+                <div class="integration-card" onclick="toggleIntegration('icici')">
+                    <div class="integration-header">
+                        <div class="integration-icon">🏦</div>
+                        <span class="integration-status status-disconnected" id="icici-status">Connect</span>
+                    </div>
+                    <h3 class="integration-title">ICICI Bank</h3>
+                    <p class="integration-description">Sync your ICICI bank account transactions</p>
+                    <div class="sync-info">
+                        <span id="icici-sync">Never synced</span>
+                        <span id="icici-count">0 transactions</span>
                     </div>
                 </div>
             </div>
@@ -1514,6 +1602,7 @@
                 <button class="close-btn" onclick="closeModal('budget')">&times;</button>
             </div>
             <form onsubmit="addBudget(event)">
+                <input type="hidden" id="budgetId">
                 <div class="form-group">
                     <label class="form-label">Category</label>
                     <select class="form-select" id="budgetCategory" required>
@@ -1530,7 +1619,7 @@
                     <label class="form-label">Monthly Limit (₹)</label>
                     <input type="number" class="form-input" id="budgetAmount" required placeholder="0" step="0.01">
                 </div>
-                <button type="submit" class="btn" style="width: 100%;">Add Budget</button>
+                <button type="submit" class="btn" style="width: 100%;" id="budgetSubmitBtn">Add Budget</button>
             </form>
         </div>
     </div>
@@ -1543,6 +1632,7 @@
                 <button class="close-btn" onclick="closeModal('goal')">&times;</button>
             </div>
             <form onsubmit="addGoal(event)">
+                <input type="hidden" id="goalId">
                 <div class="form-group">
                     <label class="form-label">Goal Name</label>
                     <input type="text" class="form-input" id="goalName" required placeholder="e.g., Emergency Fund">
@@ -1557,7 +1647,89 @@
                         <input type="number" class="form-input" id="goalCurrent" placeholder="0" step="0.01" value="0">
                     </div>
                 </div>
-                <button type="submit" class="btn" style="width: 100%;">Add Goal</button>
+                <button type="submit" class="btn" style="width: 100%;" id="goalSubmitBtn">Add Goal</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Investment Modal -->
+    <div id="investmentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Investment</h3>
+                <button class="close-btn" onclick="closeModal('investment')">&times;</button>
+            </div>
+            <form onsubmit="addInvestment(event)">
+                <input type="hidden" id="investmentId">
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" id="investmentName" required placeholder="e.g., Equity SIP">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Type</label>
+                    <input type="text" class="form-input" id="investmentType" required placeholder="e.g., Mutual Fund">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Amount Invested (₹)</label>
+                        <input type="number" class="form-input" id="investmentAmount" required placeholder="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Current Value (₹)</label>
+                        <input type="number" class="form-input" id="investmentValue" placeholder="0" step="0.01">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-input" id="investmentNotes" placeholder="Optional notes"></textarea>
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Save Investment</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Liability Modal -->
+    <div id="liabilityModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Add Liability</h3>
+                <button class="close-btn" onclick="closeModal('liability')">&times;</button>
+            </div>
+            <form onsubmit="addLiability(event)">
+                <input type="hidden" id="liabilityId">
+                <div class="form-group">
+                    <label class="form-label">Lender</label>
+                    <input type="text" class="form-input" id="liabilityLender" required placeholder="e.g., HDFC Bank">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Total Amount (₹)</label>
+                        <input type="number" class="form-input" id="liabilityAmount" required placeholder="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Outstanding (₹)</label>
+                        <input type="number" class="form-input" id="liabilityOutstanding" required placeholder="0" step="0.01">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Interest Rate (%)</label>
+                        <input type="number" class="form-input" id="liabilityInterest" placeholder="e.g., 7.5" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Monthly Payment (₹)</label>
+                        <input type="number" class="form-input" id="liabilityPayment" placeholder="0" step="0.01">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Due Date</label>
+                    <input type="date" class="form-input" id="liabilityDueDate">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-input" id="liabilityNotes" placeholder="Optional notes"></textarea>
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Save Liability</button>
             </form>
         </div>
     </div>
@@ -1575,6 +1747,7 @@
                     <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;">
                         In production, you would authenticate via OAuth or provide API credentials here.
                     </p>
+                    <div id="integrationError" class="integration-error" style="display: none; margin-bottom: 12px;"></div>
                     <input type="text" class="form-input" placeholder="API Key / OAuth Token" id="apiKeyInput">
                 </div>
                 <div class="form-group">
@@ -1689,6 +1862,8 @@
             transactions: 'db_transactions',
             budgets: 'db_budgets',
             goals: 'db_goals',
+            investments: 'db_investments',
+            liabilities: 'db_liabilities',
             integrations: 'db_integrations',
             auditLog: 'db_audit_log',
             metadata: 'db_metadata'
@@ -1698,6 +1873,8 @@
         let transactions = [];
         let budgets = [];
         let goals = [];
+        let investments = [];
+        let liabilities = [];
         let integrations = {};
         let auditLog = [];
         let expenseChart = null;
@@ -1718,12 +1895,15 @@
             static async load() {
                 console.log('📥 Loading data from API...');
                 try {
-                    const [txns, bdgts, gls] = await Promise.all([
+                    const [txns, bdgts, gls, invs, libs, ints] = await Promise.all([
                         api.getTransactions().catch(() => []),
                         api.getBudgets().catch(() => []),
-                        api.getGoals().catch(() => [])
+                        api.getGoals().catch(() => []),
+                        api.getInvestments().catch(() => []),
+                        api.getLiabilities().catch(() => []),
+                        api.getIntegrations().catch(() => [])
                     ]);
-                    
+
                     transactions = (txns || []).map(t => ({
                         ...t,
                         createdAt: t.created_at,
@@ -1731,26 +1911,41 @@
                         synced: t.synced || false,
                         source: t.source || null
                     }));
-                    
+
                     budgets = (bdgts || []).map(b => ({
                         ...b,
                         createdAt: b.created_at,
                         updatedAt: b.updated_at
                     }));
-                    
+
                     goals = (gls || []).map(g => ({
                         ...g,
                         createdAt: g.created_at,
                         updatedAt: g.updated_at
                     }));
-                    
-                    integrations = {};
-                    auditLog = [];
-                    
+
+                    investments = (invs || []).map(i => ({
+                        ...i,
+                        createdAt: i.created_at,
+                        updatedAt: i.updated_at
+                    }));
+
+                    liabilities = (libs || []).map(l => ({
+                        ...l,
+                        createdAt: l.created_at,
+                        updatedAt: l.updated_at
+                    }));
+
+                    integrations = (ints || []).reduce((acc, i) => {
+                        acc[i.app_name] = { ...i, lastError: null };
+                        return acc;
+                    }, {});
+
                     console.log('✅ Loaded from API:', {
                         transactions: transactions.length,
                         budgets: budgets.length,
-                        goals: goals.length
+                        goals: goals.length,
+                        integrations: Object.keys(integrations).length
                     });
                 } catch (error) {
                     console.error('❌ API load error:', error);
@@ -1783,37 +1978,62 @@
             }
         }
 
-        // Sample data generators
-        const appDataGenerators = {
-            phonepe: () => [
-                { description: 'UPI to Swiggy', amount: 450, category: 'Food', type: 'expense' },
-                { description: 'DTH Recharge', amount: 299, category: 'Bills', type: 'expense' },
-                { description: 'Metro Recharge', amount: 500, category: 'Transport', type: 'expense' },
-                { description: 'Received from Friend', amount: 2000, category: 'Other', type: 'income' }
-            ],
-            groww: () => [
-                { description: 'Mutual Fund SIP', amount: 5000, category: 'Investment', type: 'expense' },
-                { description: 'Stock Purchase - TCS', amount: 3500, category: 'Investment', type: 'expense' },
-                { description: 'Dividend Received', amount: 250, category: 'Other', type: 'income' }
-            ],
-            paytm: () => [
-                { description: 'Electricity Bill', amount: 1250, category: 'Bills', type: 'expense' },
-                { description: 'Mobile Recharge', amount: 399, category: 'Bills', type: 'expense' },
-                { description: 'Movie Tickets', amount: 600, category: 'Entertainment', type: 'expense' }
-            ],
-            gpay: () => [
-                { description: 'Uber Ride', amount: 180, category: 'Transport', type: 'expense' },
-                { description: 'Zomato Order', amount: 520, category: 'Food', type: 'expense' },
-                { description: 'Pharmacy', amount: 340, category: 'Health', type: 'expense' }
-            ],
-            cred: () => [
-                { description: 'Credit Card Payment', amount: 15000, category: 'Bills', type: 'expense' },
-                { description: 'Cashback Received', amount: 150, category: 'Other', type: 'income' }
-            ],
-            zerodha: () => [
-                { description: 'Stock Purchase - Reliance', amount: 4500, category: 'Investment', type: 'expense' },
-                { description: 'Stock Sold - Infosys', amount: 8200, category: 'Investment', type: 'income' }
-            ]
+        // Supported integrations (external services / banks)
+        const SUPPORTED_INTEGRATIONS = {
+            phonepe: {
+                label: 'PhonePe',
+                icon: '📱',
+                description: 'Sync UPI transactions, bills, and recharges',
+                countLabel: 'transactions'
+            },
+            groww: {
+                label: 'Groww',
+                icon: '📈',
+                description: 'Import investments, mutual funds, and stocks',
+                countLabel: 'investments'
+            },
+            paytm: {
+                label: 'Paytm',
+                icon: '💳',
+                description: 'Sync wallet transactions and merchant payments',
+                countLabel: 'transactions'
+            },
+            gpay: {
+                label: 'Google Pay',
+                icon: '🔵',
+                description: 'Import UPI payments and bill payments',
+                countLabel: 'transactions'
+            },
+            cred: {
+                label: 'CRED',
+                icon: '💎',
+                description: 'Track credit card bills and payments',
+                countLabel: 'bills'
+            },
+            zerodha: {
+                label: 'Zerodha',
+                icon: '📊',
+                description: 'Import trading and demat account data',
+                countLabel: 'trades'
+            },
+            hdfc: {
+                label: 'HDFC Bank',
+                icon: '🏦',
+                description: 'Sync bank account transactions',
+                countLabel: 'transactions'
+            },
+            sbi: {
+                label: 'SBI Bank',
+                icon: '🏦',
+                description: 'Sync bank account transactions',
+                countLabel: 'transactions'
+            },
+            icici: {
+                label: 'ICICI Bank',
+                icon: '🏦',
+                description: 'Sync bank account transactions',
+                countLabel: 'transactions'
+            }
         };
 
         // Category configuration
@@ -2186,27 +2406,80 @@
         // Budget operations
         async function addBudget(e) {
             e.preventDefault();
-            
+            const id = document.getElementById('budgetId').value;
+
             const budget = {
                 category: document.getElementById('budgetCategory').value,
                 limit: parseFloat(document.getElementById('budgetAmount').value)
             };
-            
-            try {
-                const saved = await api.createBudget(budget);
-                budgets.push({
-                    ...saved,
-                    createdAt: saved.created_at,
-                    updatedAt: saved.updated_at
+
+            const apiCreateBudget = typeof api.createBudget === 'function'
+                ? api.createBudget.bind(api)
+                : (budgetData) => api.request('/budgets', {
+                    method: 'POST',
+                    body: JSON.stringify(budgetData)
                 });
-                
+
+            const apiUpdateBudget = typeof api.updateBudget === 'function'
+                ? api.updateBudget.bind(api)
+                : (budgetId, budgetData) => api.request(`/budgets/${budgetId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(budgetData)
+                });
+
+            try {
+                if (id) {
+                    const updated = await apiUpdateBudget(id, budget);
+                    const idx = budgets.findIndex(b => b.id == id);
+                    if (idx !== -1) {
+                        budgets[idx] = { ...updated, createdAt: updated.created_at, updatedAt: updated.updated_at };
+                    }
+                    showNotification('Budget updated successfully!', 'success');
+                } else {
+                    const saved = await apiCreateBudget(budget);
+                    budgets.push({
+                        ...saved,
+                        createdAt: saved.created_at,
+                        updatedAt: saved.updated_at
+                    });
+                    showNotification('Budget added successfully!', 'success');
+                }
+
                 renderBudgets();
                 closeModal('budget');
-                e.target.reset();
-                showNotification('Budget added successfully!', 'success');
             } catch (error) {
                 console.error('❌ Budget save error:', error);
                 showNotification('Failed to save budget: ' + error.message, 'error');
+            }
+        }
+
+        function editBudget(id) {
+            const budget = budgets.find(b => b.id == id);
+            if (!budget) return;
+
+            document.getElementById('budgetId').value = budget.id;
+            document.getElementById('budgetCategory').value = budget.category;
+            document.getElementById('budgetAmount').value = budget.limit;
+            document.getElementById('budgetModal').querySelector('.modal-title').textContent = 'Edit Budget';
+            document.getElementById('budgetSubmitBtn').textContent = 'Update Budget';
+            openModal('budget');
+        }
+
+        async function deleteBudget(id) {
+            if (!confirm('Delete this budget?')) return;
+
+            try {
+                const apiDeleteBudget = typeof api.deleteBudget === 'function'
+                    ? api.deleteBudget.bind(api)
+                    : (budgetId) => api.request(`/budgets/${budgetId}`, { method: 'DELETE' });
+
+                await apiDeleteBudget(id);
+                budgets = budgets.filter(b => b.id != id);
+                renderBudgets();
+                showNotification('Budget deleted.', 'success');
+            } catch (error) {
+                console.error('❌ Delete budget error:', error);
+                showNotification('Failed to delete budget: ' + error.message, 'error');
             }
         }
 
@@ -2236,11 +2509,15 @@
                 return `
                     <div class="budget-item">
                         <div class="budget-header">
-                            <span class="budget-name">${budget.category}</span>
+                            <span class="budget-name">${budget.category} 📌</span>
                             <span class="budget-amounts">${formatCurrency(spent)} / ${formatCurrency(budget.limit)}</span>
                         </div>
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${percentage}%; background: ${isOverBudget ? 'var(--danger)' : 'var(--accent)'}"></div>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" onclick="editBudget(${budget.id})">✏️ Edit</button>
+                            <button class="btn btn-danger" onclick="deleteBudget(${budget.id})">🗑️ Delete</button>
                         </div>
                     </div>
                 `;
@@ -2250,29 +2527,74 @@
         // Goal operations
         async function addGoal(e) {
             e.preventDefault();
-            
+            const id = document.getElementById('goalId').value;
             const goal = {
                 name: document.getElementById('goalName').value,
                 target: parseFloat(document.getElementById('goalTarget').value),
                 current: parseFloat(document.getElementById('goalCurrent').value) || 0
             };
-            
-            try {
-                const saved = await api.createGoal(goal);
-                goals.push({
-                    ...saved,
-                    createdAt: saved.created_at,
-                    updatedAt: saved.updated_at
+
+            // Resilient to older cached api helper versions
+            const apiCreateGoal = typeof api.createGoal === 'function'
+                ? api.createGoal.bind(api)
+                : (goalData) => api.request('/goals', {
+                    method: 'POST',
+                    body: JSON.stringify(goalData)
                 });
-                
+
+            const apiUpdateGoal = typeof api.updateGoal === 'function'
+                ? api.updateGoal.bind(api)
+                : (goalId, goalData) => api.request(`/goals/${goalId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(goalData)
+                });
+
+            try {
+                if (id) {
+                    const updated = await apiUpdateGoal(id, goal);
+                    const idx = goals.findIndex(g => g.id == id);
+                    if (idx !== -1) {
+                        goals[idx] = { ...updated, createdAt: updated.created_at, updatedAt: updated.updated_at };
+                    }
+                    showNotification('Goal updated successfully!', 'success');
+                } else {
+                    const saved = await apiCreateGoal(goal);
+                    goals.push({
+                        ...saved,
+                        createdAt: saved.created_at,
+                        updatedAt: saved.updated_at
+                    });
+                    showNotification('Goal added successfully!', 'success');
+                }
+
                 renderGoals();
                 closeModal('goal');
-                e.target.reset();
-                showNotification('Goal added successfully!', 'success');
             } catch (error) {
                 console.error('❌ Goal save error:', error);
                 showNotification('Failed to save goal: ' + error.message, 'error');
             }
+        }
+
+        function calculateMonthlySavings() {
+            const monthTransactions = getCurrentMonthTransactions();
+            const income = monthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const expenses = monthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            return income - expenses;
+        }
+
+        function getGoalSuggestion(goal) {
+            const remaining = goal.target - goal.current;
+            if (remaining <= 0) {
+                return '🎉 Goal reached — great work! Consider setting a new goal.';
+            }
+
+            const monthlySavings = calculateMonthlySavings();
+            if (monthlySavings <= 0) {
+                return 'You are not saving much this month. Try reducing expenses or increasing income, then consider a regular investment plan (SIP).';
+            }
+
+            const monthsToGoal = Math.max(1, Math.ceil(remaining / monthlySavings));
+            return `At your current monthly savings rate (₹${formatCurrency(monthlySavings)}), you\'d reach this goal in about ${monthsToGoal} month${monthsToGoal === 1 ? '' : 's'}. Consider a recurring investment (SIP) or high-yield savings plan to reach it faster.`;
         }
 
         function renderGoals() {
@@ -2291,6 +2613,7 @@
             list.innerHTML = goals.map(goal => {
                 const percentage = Math.min((goal.current / goal.target) * 100, 100);
                 const isComplete = goal.current >= goal.target;
+                const suggestion = getGoalSuggestion(goal);
                 
                 return `
                     <div class="goal-item">
@@ -2307,9 +2630,292 @@
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${percentage}%; background: ${isComplete ? 'var(--success)' : 'var(--accent)'}"></div>
                         </div>
+                        <div class="goal-suggestion">${suggestion}</div>
+                        <div style="margin-top: 12px; display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" onclick="editGoal(${goal.id})">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteGoal(${goal.id})">Delete</button>
+                        </div>
                     </div>
                 `;
             }).join('');
+        }
+
+        function editGoal(id) {
+            const goal = goals.find(g => g.id == id);
+            if (!goal) return;
+
+            document.getElementById('goalId').value = goal.id;
+            document.getElementById('goalName').value = goal.name;
+            document.getElementById('goalTarget').value = goal.target;
+            document.getElementById('goalCurrent').value = goal.current;
+            document.getElementById('goalModal').querySelector('.modal-title').textContent = 'Edit Goal';
+            document.getElementById('goalSubmitBtn').textContent = 'Update Goal';
+            document.getElementById('goalModal').classList.add('active');
+        }
+
+        async function deleteGoal(id) {
+            if (!confirm('Delete this goal?')) return;
+
+            try {
+                const apiDeleteGoal = typeof api.deleteGoal === 'function'
+                    ? api.deleteGoal.bind(api)
+                    : (goalId) => api.request(`/goals/${goalId}`, { method: 'DELETE' });
+
+                await apiDeleteGoal(id);
+                goals = goals.filter(g => g.id != id);
+                renderGoals();
+                showNotification('Goal deleted.', 'success');
+            } catch (error) {
+                console.error('❌ Delete goal error:', error);
+                showNotification('Failed to delete goal: ' + error.message, 'error');
+            }
+        }
+
+        function renderInvestments() {
+            const list = document.getElementById('investmentList');
+
+            if (investments.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💼</div>
+                        <p>No investments tracked. Add an investment to begin.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = investments.map(inv => {
+                const gain = inv.current_value !== null && inv.current_value !== undefined
+                    ? inv.current_value - inv.amount_invested
+                    : null;
+                const gainLabel = gain === null ? '' : `${gain >= 0 ? '+' : '-'}${formatCurrency(Math.abs(gain))}`;
+                const gainClass = gain === null ? '' : (gain >= 0 ? 'positive' : 'negative');
+
+                return `
+                    <div class="goal-item">
+                        <div class="goal-header">
+                            <div class="goal-info">
+                                <h3>${inv.name}</h3>
+                                <p class="goal-target">Type: ${inv.type}</p>
+                            </div>
+                            <div class="goal-progress-text">
+                                <div class="goal-current">Invested: ${formatCurrency(inv.amount_invested)}</div>
+                                <div class="goal-percentage ${gainClass}">Value: ${inv.current_value != null ? formatCurrency(inv.current_value) : '--'} ${gainLabel ? `(${gainLabel})` : ''}</div>
+                            </div>
+                        </div>
+                        ${inv.notes ? `<p style="margin-top: 10px; color: var(--text-secondary);">${inv.notes}</p>` : ''}
+                        <div style="margin-top: 12px; display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" onclick="editInvestment(${inv.id})">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteInvestment(${inv.id})">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function addInvestment(e) {
+            e.preventDefault();
+            const id = document.getElementById('investmentId').value;
+            const payload = {
+                name: document.getElementById('investmentName').value,
+                type: document.getElementById('investmentType').value,
+                amount_invested: parseFloat(document.getElementById('investmentAmount').value),
+                current_value: parseFloat(document.getElementById('investmentValue').value) || null,
+                notes: document.getElementById('investmentNotes').value || ''
+            };
+
+            // Keep this resilient if the cached api helper is missing the newer helpers
+            const apiCreateInvestment = typeof api.createInvestment === 'function'
+                ? api.createInvestment.bind(api)
+                : (investment) => api.request('/investments', {
+                    method: 'POST',
+                    body: JSON.stringify(investment)
+                });
+
+            const apiUpdateInvestment = typeof api.updateInvestment === 'function'
+                ? api.updateInvestment.bind(api)
+                : (id, investment) => api.request(`/investments/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(investment)
+                });
+
+            try {
+                if (id) {
+                    const updated = await apiUpdateInvestment(id, payload);
+                    const idx = investments.findIndex(i => i.id == id);
+                    if (idx !== -1) {
+                        investments[idx] = { ...updated, createdAt: updated.created_at, updatedAt: updated.updated_at };
+                    }
+                    showNotification('Investment updated successfully!', 'success');
+                } else {
+                    const created = await apiCreateInvestment(payload);
+                    investments.push({ ...created, createdAt: created.created_at, updatedAt: created.updated_at });
+                    showNotification('Investment added successfully!', 'success');
+                }
+
+                renderInvestments();
+                closeModal('investment');
+            } catch (error) {
+                console.error('❌ Investment save error:', error);
+                showNotification('Failed to save investment: ' + error.message, 'error');
+            }
+        }
+
+        function editInvestment(id) {
+            const inv = investments.find(i => i.id == id);
+            if (!inv) return;
+
+            document.getElementById('investmentId').value = inv.id;
+            document.getElementById('investmentName').value = inv.name;
+            document.getElementById('investmentType').value = inv.type;
+            document.getElementById('investmentAmount').value = inv.amount_invested;
+            document.getElementById('investmentValue').value = inv.current_value || '';
+            document.getElementById('investmentNotes').value = inv.notes || '';
+
+            document.getElementById('investmentModal').querySelector('.modal-title').textContent = 'Edit Investment';
+            openModal('investment');
+        }
+
+        async function deleteInvestment(id) {
+            if (!confirm('Delete this investment?')) return;
+
+            try {
+                const apiDeleteInvestment = typeof api.deleteInvestment === 'function'
+                    ? api.deleteInvestment.bind(api)
+                    : (investmentId) => api.request(`/investments/${investmentId}`, { method: 'DELETE' });
+
+                await apiDeleteInvestment(id);
+                investments = investments.filter(i => i.id != id);
+                renderInvestments();
+                showNotification('Investment deleted.', 'success');
+            } catch (error) {
+                console.error('❌ Delete investment error:', error);
+                showNotification('Failed to delete investment: ' + error.message, 'error');
+            }
+        }
+
+        function renderLiabilities() {
+            const list = document.getElementById('liabilityList');
+
+            if (liabilities.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏦</div>
+                        <p>No liabilities tracked. Add a loan or credit obligation to track.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = liabilities.map(lib => {
+                return `
+                    <div class="goal-item">
+                        <div class="goal-header">
+                            <div class="goal-info">
+                                <h3>${lib.lender}</h3>
+                                <p class="goal-target">Amount: ${formatCurrency(lib.amount)} | Outstanding: ${formatCurrency(lib.outstanding)}</p>
+                            </div>
+                            <div class="goal-progress-text">
+                                <div class="goal-current">Interest: ${lib.interest_rate ? lib.interest_rate + '%' : '--'}</div>
+                                <div class="goal-percentage">Payment: ${lib.monthly_payment ? formatCurrency(lib.monthly_payment) + '/mo' : '--'}</div>
+                            </div>
+                        </div>
+                        ${lib.due_date ? `<p style="margin-top: 10px; color: var(--text-secondary);">Due date: ${new Date(lib.due_date).toLocaleDateString()}</p>` : ''}
+                        ${lib.notes ? `<p style="margin-top: 10px; color: var(--text-secondary);">${lib.notes}</p>` : ''}
+                        <div style="margin-top: 12px; display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" onclick="editLiability(${lib.id})">Edit</button>
+                            <button class="btn btn-danger" onclick="deleteLiability(${lib.id})">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function addLiability(e) {
+            e.preventDefault();
+            const id = document.getElementById('liabilityId').value;
+            const payload = {
+                lender: document.getElementById('liabilityLender').value,
+                amount: parseFloat(document.getElementById('liabilityAmount').value),
+                outstanding: parseFloat(document.getElementById('liabilityOutstanding').value),
+                interest_rate: parseFloat(document.getElementById('liabilityInterest').value) || null,
+                monthly_payment: parseFloat(document.getElementById('liabilityPayment').value) || null,
+                due_date: document.getElementById('liabilityDueDate').value || null,
+                notes: document.getElementById('liabilityNotes').value || ''
+            };
+
+            try {
+                if (id) {
+                    const updateFn = api.updateLiability || ((id, data) => api.request(`/liabilities/${id}`, { method: 'PUT', body: JSON.stringify(data) }));
+                    const updated = await updateFn(id, payload);
+                    const idx = liabilities.findIndex(l => l.id == id);
+                    if (idx !== -1) {
+                        liabilities[idx] = { ...updated, createdAt: updated.created_at, updatedAt: updated.updated_at };
+                    }
+                    showNotification('Liability updated successfully!', 'success');
+                } else {
+                    const createFn = api.createLiability || (payload => api.request('/liabilities', { method: 'POST', body: JSON.stringify(payload) }));
+                    const created = await createFn(payload);
+                    liabilities.push({ ...created, createdAt: created.created_at, updatedAt: created.updated_at });
+                    showNotification('Liability added successfully!', 'success');
+                }
+
+                renderLiabilities();
+                closeModal('liability');
+            } catch (error) {
+                console.error('❌ Liability save error:', error);
+                showNotification('Failed to save liability: ' + error.message, 'error');
+            }
+        }
+
+        function editLiability(id) {
+            const lib = liabilities.find(l => l.id == id);
+            if (!lib) return;
+
+            document.getElementById('liabilityId').value = lib.id;
+            document.getElementById('liabilityLender').value = lib.lender;
+            document.getElementById('liabilityAmount').value = lib.amount;
+            document.getElementById('liabilityOutstanding').value = lib.outstanding;
+            document.getElementById('liabilityInterest').value = lib.interest_rate || '';
+            document.getElementById('liabilityPayment').value = lib.monthly_payment || '';
+            document.getElementById('liabilityDueDate').value = lib.due_date ? lib.due_date.split('T')[0] : '';
+            document.getElementById('liabilityNotes').value = lib.notes || '';
+
+            document.getElementById('liabilityModal').querySelector('.modal-title').textContent = 'Edit Liability';
+            openModal('liability');
+        }
+
+        async function deleteLiability(id) {
+            if (!confirm('Delete this liability?')) return;
+
+            try {
+                const apiClient = window.api && typeof window.api.request === 'function'
+                    ? window.api.request.bind(window.api)
+                    : null;
+
+                const deleteFn = (window.api && typeof window.api.deleteLiability === 'function')
+                    ? window.api.deleteLiability.bind(window.api)
+                    : apiClient
+                        ? (liabilityId) => apiClient(`/liabilities/${liabilityId}`, { method: 'DELETE' })
+                        : (liabilityId) => fetch(`${window.location.origin}/api/liabilities/${liabilityId}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {})
+                            }
+                        }).then(res => {
+                            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+                            return res.json();
+                        });
+
+                await deleteFn(id);
+                liabilities = liabilities.filter(l => l.id != id);
+                renderLiabilities();
+                showNotification('Liability deleted.', 'success');
+            } catch (error) {
+                console.error('❌ Delete liability error:', error);
+                showNotification('Failed to delete liability: ' + error.message, 'error');
+            }
         }
 
         // Insights
@@ -2352,15 +2958,16 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    maintainAspectRatio: false,
+                    aspectRatio: 1,
                     plugins: {
                         legend: {
                             position: 'bottom',
                             labels: {
-                                padding: 20,
+                                padding: 12,
                                 font: {
                                     family: 'Instrument Sans',
-                                    size: 13
+                                    size: 12
                                 }
                             }
                         },
@@ -2378,104 +2985,164 @@
 
         // Integration functions
         function updateIntegrationUI() {
-            Object.keys(appDataGenerators).forEach(app => {
-                const isConnected = integrations[app]?.connected;
+            Object.keys(SUPPORTED_INTEGRATIONS).forEach(app => {
                 const card = document.querySelector(`.integration-card[onclick*="${app}"]`);
                 const status = document.getElementById(`${app}-status`);
-                
+                const syncInfo = document.getElementById(`${app}-sync`);
+                const countInfo = document.getElementById(`${app}-count`);
+
+                const integration = integrations[app] || {};
+                const isConnected = !!integration.connected;
+                const lastError = integration.lastError;
+                const meta = SUPPORTED_INTEGRATIONS[app] || {};
+
+                if (card) {
+                    card.classList.toggle('connected', isConnected);
+                    card.classList.toggle('failed', !!lastError && !isConnected);
+                }
+
                 if (isConnected) {
-                    card.classList.add('connected');
                     status.textContent = 'Connected';
                     status.className = 'integration-status status-connected';
-                    
-                    if (integrations[app].lastSync) {
-                        document.getElementById(`${app}-sync`).textContent = 
-                            'Last synced: ' + new Date(integrations[app].lastSync).toLocaleDateString();
-                    }
-                    
+                    status.title = 'Connected';
+
+                    syncInfo.textContent = integration.last_sync
+                        ? 'Last synced: ' + new Date(integration.last_sync).toLocaleString()
+                        : 'Never synced';
+
                     const count = transactions.filter(t => t.source === app).length;
-                    document.getElementById(`${app}-count`).textContent = `${count} transactions`;
+                    countInfo.textContent = `${count} ${meta.countLabel || 'transactions'}`;
+                } else if (lastError) {
+                    status.textContent = 'Failed to connect';
+                    status.className = 'integration-status status-failed';
+                    status.title = lastError;
+
+                    syncInfo.textContent = 'Connection failed';
+                    countInfo.textContent = `Error: ${lastError}`;
                 } else {
-                    card.classList.remove('connected');
-                    status.textContent = 'Connect';
+                    status.textContent = 'Not connected';
                     status.className = 'integration-status status-disconnected';
+                    status.title = '';
+
+                    syncInfo.textContent = 'Never synced';
+                    countInfo.textContent = `0 ${meta.countLabel || 'transactions'}`;
                 }
             });
         }
 
+        async function disconnectIntegration(app) {
+            const label = SUPPORTED_INTEGRATIONS[app]?.label || app;
+            try {
+                const updated = await api.updateIntegration(app, { connected: false });
+                integrations[app] = { ...updated, lastError: null };
+
+                Database.logAudit('update', 'integration', app,
+                    `Disconnected ${label}`,
+                    { app, action: 'disconnect' });
+
+                updateIntegrationUI();
+                showNotification(`${label} disconnected`, 'success');
+            } catch (error) {
+                console.error('Disconnect error:', error);
+                showNotification('Failed to disconnect: ' + error.message, 'error');
+            }
+        }
+
         function toggleIntegration(app) {
             currentIntegration = app;
-            const appNames = {
-                phonepe: 'PhonePe',
-                groww: 'Groww',
-                paytm: 'Paytm',
-                gpay: 'Google Pay',
-                cred: 'CRED',
-                zerodha: 'Zerodha'
-            };
-            
+            const label = SUPPORTED_INTEGRATIONS[app]?.label || app;
+
             if (integrations[app]?.connected) {
-                if (confirm(`Disconnect ${appNames[app]}? Synced transactions will remain.`)) {
-                    integrations[app].connected = false;
-                    Database.logAudit('update', 'integration', app,
-                        `Disconnected ${appNames[app]}`,
-                        { app, action: 'disconnect' });
-                    Database.save();
-                    updateIntegrationUI();
+                if (confirm(`Disconnect ${label}? Synced transactions will remain.`)) {
+                    disconnectIntegration(app);
                 }
             } else {
-                document.getElementById('integrationModalTitle').textContent = `Connect ${appNames[app]}`;
+                const existing = integrations[app] || {};
+                document.getElementById('integrationModalTitle').textContent = `Connect ${label}`;
+                document.getElementById('apiKeyInput').value = existing.api_key || '';
+                document.getElementById('syncFrequency').value = existing.sync_frequency || 'daily';
+                const errorEl = document.getElementById('integrationError');
+                if (errorEl) {
+                    errorEl.textContent = existing.lastError || '';
+                    errorEl.style.display = existing.lastError ? 'block' : 'none';
+                }
+
                 openModal('integration');
             }
         }
 
         async function connectApp() {
             if (!currentIntegration) return;
-            
-            integrations[currentIntegration] = {
-                connected: true,
-                lastSync: new Date().toISOString(),
-                apiKey: document.getElementById('apiKeyInput').value || 'demo-key',
-                syncFrequency: document.getElementById('syncFrequency').value
-            };
-            
-            Database.logAudit('create', 'integration', currentIntegration,
-                `Connected ${currentIntegration}`,
-                integrations[currentIntegration]);
-            
-            await Database.save();
-            closeModal('integration');
-            await syncApp(currentIntegration);
-            updateIntegrationUI();
+
+            const apiKey = document.getElementById('apiKeyInput').value || '';
+            const syncFrequency = document.getElementById('syncFrequency').value;
+            const errorEl = document.getElementById('integrationError');
+
+            try {
+                const integration = await api.createIntegration({
+                    app_name: currentIntegration,
+                    api_key: apiKey,
+                    sync_frequency: syncFrequency
+                });
+
+                integrations[currentIntegration] = { ...integration, lastError: null };
+
+                Database.logAudit('create', 'integration', currentIntegration,
+                    `Connected ${SUPPORTED_INTEGRATIONS[currentIntegration]?.label || currentIntegration}`,
+                    integration);
+
+                if (errorEl) {
+                    errorEl.textContent = '';
+                    errorEl.style.display = 'none';
+                }
+
+                closeModal('integration');
+                await syncApp(currentIntegration);
+                updateIntegrationUI();
+            } catch (error) {
+                console.error('Failed to connect integration:', error);
+
+                integrations[currentIntegration] = {
+                    ...(integrations[currentIntegration] || {}),
+                    connected: false,
+                    lastError: error.message
+                };
+
+                if (errorEl) {
+                    errorEl.textContent = error.message;
+                    errorEl.style.display = 'block';
+                }
+
+                updateIntegrationUI();
+                showNotification('Failed to connect integration: ' + error.message, 'error');
+            }
         }
 
         async function syncApp(app) {
             if (!integrations[app]?.connected) return;
-            
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            const generator = appDataGenerators[app];
-            if (generator) {
-                const newTransactions = generator().map(t => ({
-                    ...t,
-                    id: Date.now() + Math.random(),
-                    date: new Date().toISOString().split('T')[0],
-                    synced: true,
-                    source: app,
-                    createdAt: new Date().toISOString()
-                }));
-                
-                transactions.push(...newTransactions);
-                integrations[app].lastSync = new Date().toISOString();
-                
-                Database.logAudit('sync', 'transaction', app,
-                    `Synced ${newTransactions.length} transactions from ${app}`,
-                    { app, count: newTransactions.length, transactions: newTransactions.map(t => t.id) });
-                
-                await Database.save();
+
+            try {
+                showNotification(`Syncing ${app}...`, 'info');
+                const result = await api.syncIntegration(app);
+
+                // Refresh state from backend after sync
+                await Database.load();
                 renderTransactions();
                 updateOverview();
                 updateIntegrationUI();
+
+                showNotification(result.message || 'Sync complete', 'success');
+            } catch (error) {
+                console.error('Sync error:', error);
+
+                integrations[app] = {
+                    ...(integrations[app] || {}),
+                    connected: false,
+                    lastError: error.message
+                };
+
+                updateIntegrationUI();
+                showNotification('Sync failed: ' + error.message, 'error');
             }
         }
 
@@ -2606,7 +3273,7 @@
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
             
-            ['transactions', 'budgets', 'goals', 'insights', 'integrations', 'audit'].forEach(section => {
+            ['transactions', 'budgets', 'goals', 'investments', 'liabilities', 'insights', 'integrations', 'audit'].forEach(section => {
                 document.getElementById(section + '-section').style.display = 'none';
             });
             
@@ -2616,6 +3283,10 @@
                 renderInsights();
             } else if (tab === 'audit') {
                 renderAuditLog();
+            } else if (tab === 'investments') {
+                renderInvestments();
+            } else if (tab === 'liabilities') {
+                renderLiabilities();
             }
         }
 
@@ -2626,6 +3297,35 @@
                 document.getElementById('transactionId').value = '';
                 document.getElementById('transactionSubmitBtn').textContent = 'Add Transaction';
                 document.getElementById('transactionDate').valueAsDate = new Date();
+            } else if (type === 'investment') {
+                document.getElementById('investmentModal').querySelector('.modal-title').textContent = 'Add Investment';
+                document.getElementById('investmentName').value = '';
+                document.getElementById('investmentType').value = '';
+                document.getElementById('investmentAmount').value = '';
+                document.getElementById('investmentValue').value = '';
+                document.getElementById('investmentNotes').value = '';
+            } else if (type === 'liability') {
+                document.getElementById('liabilityModal').querySelector('.modal-title').textContent = 'Add Liability';
+                document.getElementById('liabilityLender').value = '';
+                document.getElementById('liabilityAmount').value = '';
+                document.getElementById('liabilityOutstanding').value = '';
+                document.getElementById('liabilityInterest').value = '';
+                document.getElementById('liabilityPayment').value = '';
+                document.getElementById('liabilityDueDate').value = '';
+                document.getElementById('liabilityNotes').value = '';
+            } else if (type === 'goal') {
+                document.getElementById('goalModal').querySelector('.modal-title').textContent = 'Add Savings Goal';
+                document.getElementById('goalId').value = '';
+                document.getElementById('goalName').value = '';
+                document.getElementById('goalTarget').value = '';
+                document.getElementById('goalCurrent').value = '0';
+                document.getElementById('goalSubmitBtn').textContent = 'Add Goal';
+            } else if (type === 'budget') {
+                document.getElementById('budgetModal').querySelector('.modal-title').textContent = 'Add Budget';
+                document.getElementById('budgetId').value = '';
+                document.getElementById('budgetCategory').value = 'Food';
+                document.getElementById('budgetAmount').value = '';
+                document.getElementById('budgetSubmitBtn').textContent = 'Add Budget';
             }
             document.getElementById(type + 'Modal').classList.add('active');
         }
@@ -2637,6 +3337,19 @@
             } else if (type === 'transaction') {
                 document.getElementById('transactionId').value = '';
                 document.getElementById('transactionNotes').value = '';
+            } else if (type === 'investment') {
+                document.getElementById('investmentNotes').value = '';
+            } else if (type === 'liability') {
+                document.getElementById('liabilityNotes').value = '';
+            } else if (type === 'goal') {
+                document.getElementById('goalId').value = '';
+                document.getElementById('goalName').value = '';
+                document.getElementById('goalTarget').value = '';
+                document.getElementById('goalCurrent').value = '0';
+            } else if (type === 'budget') {
+                document.getElementById('budgetId').value = '';
+                document.getElementById('budgetCategory').value = 'Food';
+                document.getElementById('budgetAmount').value = '';
             }
         }
 
@@ -3110,7 +3823,10 @@
                 'paytm': '💳',
                 'gpay': '🔵',
                 'cred': '💎',
-                'zerodha': '📊'
+                'zerodha': '📊',
+                'hdfc': '🏦',
+                'sbi': '🏦',
+                'icici': '🏦'
             };
             return icons[source] || '📦';
         }
@@ -3123,7 +3839,10 @@
                 'paytm': '#bfdbfe',
                 'gpay': '#e0e7ff',
                 'cred': '#fce7f3',
-                'zerodha': '#cffafe'
+                'zerodha': '#cffafe',
+                'hdfc': '#fef9c3',
+                'sbi': '#dbeafe',
+                'icici': '#fee2e2'
             };
             return colors[source] || '#e5e7eb';
         }
@@ -3143,6 +3862,8 @@
             renderTransactions();
             renderBudgets();
             renderGoals();
+            renderInvestments();
+            renderLiabilities();
             updateOverview();
             updateIntegrationUI();
 
