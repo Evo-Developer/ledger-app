@@ -50,6 +50,7 @@ class TransactionBase(BaseModel):
     amount: float
     category: str
     date: datetime
+    recurring: Optional[bool] = False
     notes: Optional[str] = None
 
 
@@ -63,12 +64,14 @@ class TransactionUpdate(BaseModel):
     amount: Optional[float] = None
     category: Optional[str] = None
     date: Optional[datetime] = None
+    recurring: Optional[bool] = None
     notes: Optional[str] = None
 
 
 class Transaction(TransactionBase):
     id: int
     user_id: int
+    recurring: bool
     synced: bool
     source: Optional[str] = None
     created_at: datetime

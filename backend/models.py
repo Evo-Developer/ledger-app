@@ -45,6 +45,7 @@ class Transaction(Base):
     category = Column(String(100), nullable=False)
     date = Column(DateTime, nullable=False)
     notes = Column(Text)
+    recurring = Column(Boolean, default=False)
     synced = Column(Boolean, default=False)
     source = Column(String(100))  # phonepe, groww, manual, etc.
     created_at = Column(DateTime, default=datetime.utcnow)

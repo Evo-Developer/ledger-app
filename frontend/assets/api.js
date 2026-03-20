@@ -58,8 +58,15 @@ class API {
                 try {
                     const error = await response.json();
                     errorMessage = error.detail || error.message || JSON.stringify(error);
-                } catch {
-                    // response was not JSON, fall back to HTTP status
+                } catch (jsonErr) {
+                    try {
+                        const text = await response.text();
+                        if (text) {
+                            errorMessage = text;
+                        }
+                    } catch (textErr) {
+                        // fallback to HTTP status if text fails too
+                    }
                 }
                 throw new Error(errorMessage);
             }
@@ -122,6 +129,34 @@ class API {
             method: 'POST',
             body: JSON.stringify(transaction),
         });
+    }
+
+    async uploadTransactionsCsv(file) {
+        const url = `${this.getApiBaseUrl()}/transactions/upload`;
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const headers = { ...this.getHeaders() };
+        delete headers['Content-Type'];
+
+        const response = await fetch(url, {
+            method: 'POST',
+            body: formData,
+            headers,
+        });
+
+        if (!response.ok) {
+            let errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
+            try {
+                const errorBody = await response.json();
+                errorMessage = errorBody.detail || errorBody.message || errorMessage;
+            } catch (err) {
+                // ignore parse error
+            }
+            throw new Error(errorMessage);
+        }
+
+        return await response.json();
     }
 
     async updateTransaction(id, transaction) {

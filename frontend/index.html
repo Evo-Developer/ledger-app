@@ -368,8 +368,8 @@
 
         <div class="auth-card">
             <div class="auth-tabs">
-                <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
-                <button class="auth-tab" onclick="switchAuthTab('register')">Register</button>
+                <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login', this)">Login</button>
+                <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register', this)">Register</button>
             </div>
 
             <div class="error-message" id="errorMessage"></div>
@@ -464,10 +464,13 @@
             }
         }
 
-        function switchAuthTab(tab) {
+        function switchAuthTab(tab, element = null) {
             // Update tab buttons
             document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
+            const tabButton = element || document.querySelector(`.auth-tab[data-tab="${tab}"]`);
+            if (tabButton) {
+                tabButton.classList.add('active');
+            }
 
             // Update forms
             document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));

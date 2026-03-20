@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -25,8 +25,13 @@ from auth import (
 )
 from integration_providers import get_provider
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+import csv
+import io
+
+from models import TransactionType
+
+# Create tables and ensure migrations
+init_db()
 
 app = FastAPI(title="Ledger Finance API", version="1.0.0")
 
@@ -51,15 +56,17 @@ def log_audit(db: Session, user_id: int, action: str, entity_type: str,
     # Convert details to JSON-serializable format
     if details:
         import datetime
-        def convert_datetime(obj):
+
+        def make_serializable(obj):
             if isinstance(obj, (datetime.datetime, datetime.date)):
                 return obj.isoformat()
+            if isinstance(obj, dict):
+                return {k: make_serializable(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [make_serializable(v) for v in obj]
             return obj
-        
-        # Convert any datetime objects to strings
-        serializable_details = {}
-        for key, value in details.items():
-            serializable_details[key] = convert_datetime(value)
+
+        serializable_details = make_serializable(details)
         details_json = json.dumps(serializable_details)
     else:
         details_json = None
@@ -166,6 +173,77 @@ def get_transactions(
     return transactions
 
 
+@app.post("/api/transactions/upload", response_model=List[TransactionSchema])
+def upload_transactions_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Upload transactions from a CSV file.
+    Required columns: type, description, amount, category, date
+    Optional columns: notes, recurring (true/false)
+    """
+    try:
+        data = file.file.read().decode('utf-8-sig')
+        csv_reader = csv.DictReader(io.StringIO(data))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read CSV file: {e}")
+
+    if not csv_reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV file has no header")
+
+    required_cols = {'type', 'description', 'amount', 'category', 'date'}
+    missing = required_cols - set([c.strip() for c in csv_reader.fieldnames if c])
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing)}")
+
+    created_transactions = []
+    for idx, row in enumerate(csv_reader, start=1):
+        if not row.get('type') or not row.get('description') or not row.get('amount') or not row.get('category') or not row.get('date'):
+            continue
+
+        tx_type = row.get('type', '').strip().lower()
+        if tx_type not in ('income', 'expense'):
+            raise HTTPException(status_code=400, detail=f"Invalid transaction type on row {idx}: {tx_type}")
+
+        try:
+            amount = float(row.get('amount'))
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid amount on row {idx}: {row.get('amount')}")
+
+        notes = row.get('notes', '').strip() if row.get('notes') else ''
+        recurring_value = row.get('recurring', '').strip().lower()
+        recurring = recurring_value in ('1', 'true', 'yes', 'y')
+
+        try:
+            transaction_date = datetime.fromisoformat(row.get('date').strip()) if 'T' in row.get('date').strip() else datetime.strptime(row.get('date').strip(), '%Y-%m-%d')
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid date format on row {idx}; expected YYYY-MM-DD or ISO format")
+
+        db_transaction = Transaction(
+            user_id=current_user.id,
+            type=TransactionType(tx_type),
+            description=row.get('description').strip(),
+            amount=amount,
+            category=row.get('category').strip(),
+            date=transaction_date,
+            notes=notes,
+            recurring=recurring,
+            synced=False,
+            source='csv'
+        )
+
+        db.add(db_transaction)
+        created_transactions.append(db_transaction)
+
+    db.commit()
+
+    for tx in created_transactions:
+        db.refresh(tx)
+
+    return created_transactions
+
+
 @app.post("/api/transactions", response_model=TransactionSchema)
 def create_transaction(
     transaction: TransactionCreate,
@@ -218,18 +296,30 @@ def update_transaction(
     }
     
     # Update fields
-    update_data = transaction.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_transaction, key, value)
-    
-    db.commit()
-    db.refresh(db_transaction)
-    
-    # Log audit
-    log_audit(db, current_user.id, "update", "transaction", transaction_id,
-              f"Updated transaction: {db_transaction.description}",
-              details={"old": old_data, "new": update_data},
-              user_agent=request.headers.get("user-agent"))
+    try:
+        update_data = transaction.dict(exclude_unset=True)
+
+        # Replace string values and date field with parsed datetime in case incoming API sends date string
+        if 'date' in update_data and isinstance(update_data['date'], str):
+            from datetime import datetime
+            update_data['date'] = datetime.fromisoformat(update_data['date'])
+
+        for key, value in update_data.items():
+            setattr(db_transaction, key, value)
+
+        db.commit()
+        db.refresh(db_transaction)
+
+        # Log audit
+        log_audit(db, current_user.id, "update", "transaction", transaction_id,
+                  f"Updated transaction: {db_transaction.description}",
+                  details={"old": old_data, "new": update_data},
+                  user_agent=request.headers.get("user-agent"))
+
+        return db_transaction
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Update transaction error: {type(exc).__name__}: {exc}")
     
     return db_transaction
 

@@ -1194,10 +1194,25 @@
                 <div class="card-value positive" id="totalIncome">₹0</div>
                 <div class="card-change" id="incomeChange">This month</div>
             </div>
+            <div class="card clickable-card" onclick="switchTab('investments')">
+                <div class="card-title">Invested <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-value negative" id="totalInvested">₹0</div>
+                <div class="card-change" id="investedChange">Portfolio</div>
+            </div>
+            <div class="card clickable-card" onclick="showSavingsBreakdown()">
+                <div class="card-title">Savings <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-value positive" id="totalSavings">₹0</div>
+                <div class="card-change" id="savingsLiabilityRatio">Liability cover: —</div>
+            </div>
             <div class="card clickable-card" onclick="showExpenseBreakdown()">
                 <div class="card-title">Expenses <span style="font-size: 12px; opacity: 0.6;">→</span></div>
                 <div class="card-value negative" id="totalExpenses">₹0</div>
                 <div class="card-change" id="expensesChange">This month</div>
+            </div>
+            <div class="card clickable-card" onclick="switchTab('liabilities')">
+                <div class="card-title">Liabilities <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-value negative" id="totalLiabilities">₹0</div>
+                <div class="card-change" id="liabilitiesChange">Outstanding</div>
             </div>
             <div class="card clickable-card" onclick="showSavingsBreakdown()">
                 <div class="card-title">Savings Rate <span style="font-size: 12px; opacity: 0.6;">→</span></div>
@@ -1208,14 +1223,14 @@
 
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('transactions')">Transactions</button>
-            <button class="tab" onclick="switchTab('budgets')">Budgets</button>
-            <button class="tab" onclick="switchTab('goals')">Goals</button>
-            <button class="tab" onclick="switchTab('investments')">Investments</button>
-            <button class="tab" onclick="switchTab('liabilities')">Liabilities</button>
-            <button class="tab" onclick="switchTab('insights')">Insights</button>
-            <button class="tab" onclick="switchTab('integrations')">Integrations</button>
-            <button class="tab" onclick="switchTab('audit')">Audit Trail</button>
+            <button class="tab active" data-tab="transactions" onclick="switchTab('transactions', this)">Transactions</button>
+            <button class="tab" data-tab="budgets" onclick="switchTab('budgets', this)">Budgets</button>
+            <button class="tab" data-tab="goals" onclick="switchTab('goals', this)">Goals</button>
+            <button class="tab" data-tab="investments" onclick="switchTab('investments', this)">Investments</button>
+            <button class="tab" data-tab="liabilities" onclick="switchTab('liabilities', this)">Liabilities</button>
+            <button class="tab" data-tab="insights" onclick="switchTab('insights', this)">Insights</button>
+            <button class="tab" data-tab="integrations" onclick="switchTab('integrations', this)">Integrations</button>
+            <button class="tab" data-tab="audit" onclick="switchTab('audit', this)">Audit Trail</button>
         </div>
 
         <!-- Transactions Section -->
@@ -1227,6 +1242,10 @@
                     <button class="btn btn-info" onclick="syncAllApps()">
                         <span id="syncIcon">🔄</span> Sync All
                     </button>
+                    <label class="btn btn-secondary" style="margin-bottom:0;">
+                        📁 Upload CSV
+                        <input type="file" id="transactionCsvUpload" accept=".csv" onchange="handleTransactionCsvUpload(event)" style="display: none;" />
+                    </label>
                     <button class="btn" onclick="openModal('transaction')">+ Add Transaction</button>
                 </div>
             </div>
@@ -1568,7 +1587,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Category</label>
-                        <select class="form-select" id="transactionCategory" required>
+                        <select class="form-select" id="transactionCategory" required onchange="handleCategorySelect(event, 'transaction')">
                             <option value="Food">Food</option>
                             <option value="Transport">Transport</option>
                             <option value="Shopping">Shopping</option>
@@ -1580,16 +1599,27 @@
                             <option value="Other">Other</option>
                         </select>
                     </div>
+                    <div class="form-group" id="transactionCategoryCustomGroup" style="display: none;">
+                        <label class="form-label">Custom Category</label>
+                        <input type="text" class="form-input" id="transactionCategoryCustom" placeholder="Enter new category">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Date</label>
                     <input type="date" class="form-input" id="transactionDate" required>
                 </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="transactionRecurring" style="width: auto; margin: 0;" />
+                    <label for="transactionRecurring" class="form-label" style="margin: 0;">Recurring transaction</label>
+                </div>
                 <div class="form-group">
                     <label class="form-label">Notes (Optional)</label>
                     <textarea class="form-textarea" id="transactionNotes" placeholder="Additional details..."></textarea>
                 </div>
-                <button type="submit" class="btn" style="width: 100%;" id="transactionSubmitBtn">Add Transaction</button>
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" class="btn" style="flex: 1;" id="transactionSaveBtn">Add Transaction</button>
+                    <button type="button" class="btn btn-success" style="flex: 1; display: none;" id="transactionUpdateBtn" onclick="saveTransaction(event, true)">Update Transaction</button>
+                </div>
             </form>
         </div>
     </div>
@@ -1605,7 +1635,7 @@
                 <input type="hidden" id="budgetId">
                 <div class="form-group">
                     <label class="form-label">Category</label>
-                    <select class="form-select" id="budgetCategory" required>
+                    <select class="form-select" id="budgetCategory" required onchange="handleCategorySelect(event, 'budget')">
                         <option value="Food">Food</option>
                         <option value="Transport">Transport</option>
                         <option value="Shopping">Shopping</option>
@@ -1614,6 +1644,10 @@
                         <option value="Health">Health</option>
                         <option value="Other">Other</option>
                     </select>
+                </div>
+                <div class="form-group" id="budgetCategoryCustomGroup" style="display: none;">
+                    <label class="form-label">Custom Category</label>
+                    <input type="text" class="form-input" id="budgetCategoryCustom" placeholder="Enter new category">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Monthly Limit (₹)</label>
@@ -1776,15 +1810,109 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="assets/api.js"></script>
+    <script src="./assets/api.js"></script>
     <script>
+        // Fallback API helper if /assets/api.js did not load
         if (!window.api) {
-            console.error('API helper not loaded: /assets/api.js failed to load or threw an error.');
+            console.warn('API helper not loaded: /assets/api.js failed to load. Using local fetch fallback.');
+
+            window.api = {
+                token: localStorage.getItem('token'),
+
+                getApiBaseUrl() {
+                    return window.API_BASE_URL || (window.location.origin + '/api');
+                },
+
+                setToken(token) {
+                    this.token = token;
+                    localStorage.setItem('token', token);
+                },
+
+                clearToken() {
+                    this.token = null;
+                    localStorage.removeItem('token');
+                },
+
+                getHeaders() {
+                    const headers = {
+                        'Content-Type': 'application/json',
+                    };
+                    if (this.token) {
+                        headers['Authorization'] = `Bearer ${this.token}`;
+                    }
+                    return headers;
+                },
+
+                async request(endpoint, options = {}) {
+                    const url = `${this.getApiBaseUrl()}${endpoint}`;
+                    const header = { ...this.getHeaders(), ...(options.headers || {}) };
+                    const config = { ...options, headers: header };
+                    const response = await fetch(url, config);
+                    if (!response.ok) {
+                        let err = `${response.status} ${response.statusText}`;
+                        try { const body = await response.json(); err = body.detail || body.message || err; } catch { }
+                        throw new Error(err);
+                    }
+                    return response.status === 204 ? null : await response.json();
+                },
+
+                async getCurrentUser() { return this.request('/auth/me'); },
+                async getTransactions() { return this.request('/transactions'); },
+                async createTransaction(t) { return this.request('/transactions', { method: 'POST', body: JSON.stringify(t) }); },
+                async updateTransaction(id,t) { return this.request(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(t) }); },
+                async deleteTransaction(id) { return this.request(`/transactions/${id}`, { method: 'DELETE' }); },
+
+                async getBudgets() { return this.request('/budgets'); },
+                async createBudget(b) { return this.request('/budgets', { method: 'POST', body: JSON.stringify(b) }); },
+                async updateBudget(id,b) { return this.request(`/budgets/${id}`, { method: 'PUT', body: JSON.stringify(b) }); },
+                async deleteBudget(id) { return this.request(`/budgets/${id}`, { method: 'DELETE' }); },
+
+                async getGoals() { return this.request('/goals'); },
+                async createGoal(g) { return this.request('/goals', { method: 'POST', body: JSON.stringify(g) }); },
+                async updateGoal(id,g) { return this.request(`/goals/${id}`, { method: 'PUT', body: JSON.stringify(g) }); },
+                async deleteGoal(id) { return this.request(`/goals/${id}`, { method: 'DELETE' }); },
+
+                async getInvestments() { return this.request('/investments'); },
+                async createInvestment(i) { return this.request('/investments', { method: 'POST', body: JSON.stringify(i) }); },
+                async updateInvestment(id,i) { return this.request(`/investments/${id}`, { method: 'PUT', body: JSON.stringify(i) }); },
+                async deleteInvestment(id) { return this.request(`/investments/${id}`, { method: 'DELETE' }); },
+
+                async getLiabilities() { return this.request('/liabilities'); },
+                async createLiability(l) { return this.request('/liabilities', { method: 'POST', body: JSON.stringify(l) }); },
+                async updateLiability(id,l) { return this.request(`/liabilities/${id}`, { method: 'PUT', body: JSON.stringify(l) }); },
+                async deleteLiability(id) { return this.request(`/liabilities/${id}`, { method: 'DELETE' }); },
+
+                async getIntegrations() { return this.request('/integrations'); },
+                async syncIntegration(appName) { return this.request(`/integrations/${appName}/sync`, { method: 'POST' }); },
+                async getAuditLogs() { return this.request('/audit-logs'); },
+            };
         }
+
+        // Keep `api` global and avoid redeclaration errors from other scripts.
+        // Use var so we do not create a const fallback collision.
+        var api = window.api;
+        console.log('FinApp script loaded', { hasApi: !!api, apiType: typeof api });
+
+        // Listen for JS errors to help debugging
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error('Global JS error:', message, source, lineno, colno, error);
+            showNotification(`JS Error: ${message} @${lineno}:${colno}`, 'error');
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+            showNotification(`Unhandled rejection: ${event.reason}`, 'error');
+        });
+
         // ==================== AUTHENTICATION CHECK ====================
         let currentUser = null;
 
         function setAuthToken(token) {
+            if (!api || typeof api.setToken !== 'function' || typeof api.clearToken !== 'function') {
+                console.warn('API helper not available for auth token management');
+                return;
+            }
+
             if (token) {
                 api.setToken(token);
             } else {
@@ -1877,6 +2005,9 @@
         let liabilities = [];
         let integrations = {};
         let auditLog = [];
+
+        const DEFAULT_CATEGORIES = ['Food', 'Transport', 'Shopping', 'Entertainment', 'Bills', 'Health', 'Salary', 'Investment'];
+        let categoryOptions = new Set([...DEFAULT_CATEGORIES]);
         let expenseChart = null;
         let currentIntegration = null;
         let currentFilters = {};
@@ -1940,6 +2071,11 @@
                         acc[i.app_name] = { ...i, lastError: null };
                         return acc;
                     }, {});
+
+                    // Keep category options updated from the current data
+                    categoryOptions = new Set([...DEFAULT_CATEGORIES]);
+                    transactions.forEach(t => setCategoryOption(t.category));
+                    budgets.forEach(b => setCategoryOption(b.category));
 
                     console.log('✅ Loaded from API:', {
                         transactions: transactions.length,
@@ -2206,22 +2342,39 @@
         // Update overview
         function updateOverview() {
             const monthTransactions = getCurrentMonthTransactions();
-            
+
             const income = monthTransactions
                 .filter(t => t.type === 'income')
                 .reduce((sum, t) => sum + t.amount, 0);
-            
+
             const expenses = monthTransactions
                 .filter(t => t.type === 'expense')
                 .reduce((sum, t) => sum + t.amount, 0);
-            
-            const balance = income - expenses;
-            const savingsRate = income > 0 ? ((balance / income) * 100).toFixed(0) : 0;
+
+            const totalLiabilities = liabilities
+                .reduce((sum, l) => sum + (parseFloat(l.outstanding ?? l.amount ?? 0) || 0), 0);
+
+            const totalInvested = investments
+                .reduce((sum, inv) => sum + (parseFloat(inv.amount_invested ?? 0) || 0), 0);
+
+            const savings = income - expenses;
+            const assets = savings + totalInvested;
+            const balance = assets - totalLiabilities;
+
+            const savingsRate = income > 0 ? ((savings / income) * 100).toFixed(0) : 0;
+            const liabilityCover = totalLiabilities > 0 ? ((savings / totalLiabilities) * 100).toFixed(0) : '—';
+            const investmentRate = income > 0 ? ((totalInvested / income) * 100).toFixed(0) : 0;
+            const expenseRatio = income > 0 ? ((expenses / income) * 100).toFixed(0) : 0;
 
             document.getElementById('totalBalance').textContent = formatCurrency(balance);
             document.getElementById('totalIncome').textContent = formatCurrency(income);
+            document.getElementById('totalInvested').textContent = formatCurrency(totalInvested);
+            document.getElementById('totalSavings').textContent = formatCurrency(savings);
             document.getElementById('totalExpenses').textContent = formatCurrency(expenses);
+            document.getElementById('totalLiabilities').textContent = formatCurrency(totalLiabilities);
             document.getElementById('savingsRate').textContent = savingsRate + '%';
+            document.getElementById('savingsLiabilityRatio').textContent = `Liability cover: ${liabilityCover === '—' ? '—' : liabilityCover + '%'} `;
+
         }
 
         // Render transactions with pagination
@@ -2262,6 +2415,7 @@
                                 <h4>${t.description}</h4>
                                 <div class="transaction-meta">
                                     <span>${t.category}</span>
+                                    ${t.recurring ? '<span>•</span><span style="color: var(--accent); font-weight: 600;">♻️ Recurring</span>' : ''}
                                     <span>•</span>
                                     <span>${new Date(t.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                     ${t.source ? `<span>•</span><span>${t.source}</span>` : ''}
@@ -2316,32 +2470,56 @@
         }
 
         // Transaction CRUD operations
-        async function saveTransaction(e) {
+        async function saveTransaction(e, explicitUpdate = false) {
             e.preventDefault();
-            
-            const id = document.getElementById('transactionId').value;
+
+            const idValue = document.getElementById('transactionId').value;
+            const transactionId = idValue ? Number(idValue) : null;
+            let category = document.getElementById('transactionCategory').value;
+            const customCategory = document.getElementById('transactionCategoryCustom').value.trim();
+            if (category === 'Other' && customCategory) {
+                category = customCategory;
+            }
+
+            if (!category) {
+                showNotification('Please select or enter a category for the transaction.', 'error');
+                return;
+            }
+
             const transaction = {
                 type: document.getElementById('transactionType').value,
                 description: document.getElementById('transactionDescription').value,
                 amount: parseFloat(document.getElementById('transactionAmount').value),
-                category: document.getElementById('transactionCategory').value,
-                date: new Date(document.getElementById('transactionDate').value).toISOString(),
+                category,
+                date: document.getElementById('transactionDate').value,
+                recurring: document.getElementById('transactionRecurring').checked,
                 notes: document.getElementById('transactionNotes').value
             };
 
+            setCategoryOption(category);
+
             try {
-                if (id) {
+                if (explicitUpdate && !transactionId) {
+                    throw new Error('No transaction selected for update. Please select “Edit” first.');
+                }
+
+                if (transactionId) {
                     // Update existing via API
-                    const updated = await api.updateTransaction(id, transaction);
-                    const index = transactions.findIndex(t => t.id == id);
+                    const updated = await api.updateTransaction(transactionId, transaction);
+                    const index = transactions.findIndex(t => t.id == transactionId);
+                    const updatedEntry = {
+                        ...updated,
+                        createdAt: updated.created_at,
+                        updatedAt: updated.updated_at,
+                        synced: updated.synced || false,
+                        source: updated.source || null
+                    };
+
                     if (index !== -1) {
-                        transactions[index] = {
-                            ...updated,
-                            createdAt: updated.created_at,
-                            updatedAt: updated.updated_at,
-                            synced: updated.synced || false,
-                            source: updated.source || null
-                        };
+                        transactions[index] = updatedEntry;
+                    } else {
+                        // fallback: if the item isn't currently in local mem, insert it
+                        transactions.push(updatedEntry);
                     }
                     showNotification('Transaction updated successfully!', 'success');
                 } else {
@@ -2361,10 +2539,49 @@
                 renderTransactions();
                 updateOverview();
                 closeModal('transaction');
-                e.target.reset();
+
+                const form = e.target.closest ? e.target.closest('form') : null;
+                if (form) {
+                    form.reset();
+                }
+
+                // ensure transaction id is cleared after update, so next add doesn't treat it as edit.
+                document.getElementById('transactionId').value = '';
             } catch (error) {
                 console.error('❌ Save error:', error);
                 showNotification('Failed to save transaction: ' + error.message, 'error');
+            }
+        }
+
+        async function handleTransactionCsvUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const imported = await api.uploadTransactionsCsv(file);
+                if (!Array.isArray(imported)) {
+                    throw new Error('CSV upload did not return expected transaction list');
+                }
+
+                const mapped = imported.map(tx => ({
+                    ...tx,
+                    createdAt: tx.created_at,
+                    updatedAt: tx.updated_at,
+                    synced: tx.synced || false,
+                    source: tx.source || 'csv'
+                }));
+
+                transactions = [...mapped, ...transactions];
+                mapped.forEach(tx => setCategoryOption(tx.category));
+
+                renderTransactions();
+                updateOverview();
+                showNotification(`Imported ${mapped.length} transactions from CSV.`, 'success');
+            } catch (error) {
+                console.error('❌ CSV import error:', error);
+                showNotification('Failed to import CSV: ' + error.message, 'error');
+            } finally {
+                event.target.value = '';
             }
         }
 
@@ -2377,11 +2594,26 @@
             document.getElementById('transactionType').value = transaction.type;
             document.getElementById('transactionDescription').value = transaction.description;
             document.getElementById('transactionAmount').value = transaction.amount;
-            document.getElementById('transactionCategory').value = transaction.category;
+
+            document.getElementById('transactionSaveBtn').style.display = 'none';
+            document.getElementById('transactionUpdateBtn').style.display = 'inline-flex';
+            document.getElementById('transactionSaveBtn').textContent = 'Add Transaction';
+
+            setCategoryOption(transaction.category);
+            const categorySelect = document.getElementById('transactionCategory');
+            categorySelect.value = categoryOptions.has(transaction.category) ? transaction.category : 'Other';
+            if (categorySelect.value === 'Other') {
+                document.getElementById('transactionCategoryCustomGroup').style.display = 'block';
+                document.getElementById('transactionCategoryCustom').value = transaction.category;
+            } else {
+                document.getElementById('transactionCategoryCustomGroup').style.display = 'none';
+                document.getElementById('transactionCategoryCustom').value = '';
+            }
+
             document.getElementById('transactionDate').value = transaction.date ? transaction.date.split('T')[0] : '';
+            document.getElementById('transactionRecurring').checked = !!transaction.recurring;
             document.getElementById('transactionNotes').value = transaction.notes || '';
-            document.getElementById('transactionSubmitBtn').textContent = 'Update Transaction';
-            
+
             openModal('transaction');
         }
 
@@ -2408,10 +2640,23 @@
             e.preventDefault();
             const id = document.getElementById('budgetId').value;
 
+            let category = document.getElementById('budgetCategory').value;
+            const customCategory = document.getElementById('budgetCategoryCustom').value.trim();
+            if (category === 'Other' && customCategory) {
+                category = customCategory;
+            }
+
+            if (!category) {
+                showNotification('Please select or enter a category for the budget.', 'error');
+                return;
+            }
+
             const budget = {
-                category: document.getElementById('budgetCategory').value,
+                category,
                 limit: parseFloat(document.getElementById('budgetAmount').value)
             };
+
+            setCategoryOption(category);
 
             const apiCreateBudget = typeof api.createBudget === 'function'
                 ? api.createBudget.bind(api)
@@ -2428,6 +2673,22 @@
                 });
 
             try {
+                // if same category exists and not edit mode, update existing budget instead of creating duplicate
+                if (!id) {
+                    const existing = budgets.find(b => b.category.toLowerCase() === category.toLowerCase());
+                    if (existing) {
+                        const updated = await apiUpdateBudget(existing.id, budget);
+                        const idx = budgets.findIndex(b => b.id == existing.id);
+                        if (idx !== -1) {
+                            budgets[idx] = { ...updated, createdAt: updated.created_at, updatedAt: updated.updated_at };
+                        }
+                        showNotification('Budget updated successfully (merged duplicate category).', 'success');
+                        renderBudgets();
+                        closeModal('budget');
+                        return;
+                    }
+                }
+
                 if (id) {
                     const updated = await apiUpdateBudget(id, budget);
                     const idx = budgets.findIndex(b => b.id == id);
@@ -2458,7 +2719,18 @@
             if (!budget) return;
 
             document.getElementById('budgetId').value = budget.id;
-            document.getElementById('budgetCategory').value = budget.category;
+
+            setCategoryOption(budget.category);
+            const budgetCatEl = document.getElementById('budgetCategory');
+            budgetCatEl.value = categoryOptions.has(budget.category) ? budget.category : 'Other';
+            if (budgetCatEl.value === 'Other') {
+                document.getElementById('budgetCategoryCustomGroup').style.display = 'block';
+                document.getElementById('budgetCategoryCustom').value = budget.category;
+            } else {
+                document.getElementById('budgetCategoryCustomGroup').style.display = 'none';
+                document.getElementById('budgetCategoryCustom').value = '';
+            }
+
             document.getElementById('budgetAmount').value = budget.limit;
             document.getElementById('budgetModal').querySelector('.modal-title').textContent = 'Edit Budget';
             document.getElementById('budgetSubmitBtn').textContent = 'Update Budget';
@@ -2754,6 +3026,7 @@
                 }
 
                 renderInvestments();
+                updateOverview();
                 closeModal('investment');
             } catch (error) {
                 console.error('❌ Investment save error:', error);
@@ -2787,6 +3060,7 @@
                 await apiDeleteInvestment(id);
                 investments = investments.filter(i => i.id != id);
                 renderInvestments();
+                updateOverview();
                 showNotification('Investment deleted.', 'success');
             } catch (error) {
                 console.error('❌ Delete investment error:', error);
@@ -2845,22 +3119,38 @@
             };
 
             try {
+                const apiCall = window.api || api;
+                const hasApiRequest = apiCall && typeof apiCall.request === 'function';
+
+                const apiUpdateLiability = apiCall && typeof apiCall.updateLiability === 'function'
+                    ? apiCall.updateLiability.bind(apiCall)
+                    : hasApiRequest
+                        ? (liabilityId, data) => apiCall.request(`/liabilities/${liabilityId}`, { method: 'PUT', body: JSON.stringify(data) })
+                        : null;
+
+                const apiCreateLiability = apiCall && typeof apiCall.createLiability === 'function'
+                    ? apiCall.createLiability.bind(apiCall)
+                    : hasApiRequest
+                        ? (data) => apiCall.request('/liabilities', { method: 'POST', body: JSON.stringify(data) })
+                        : null;
+
                 if (id) {
-                    const updateFn = api.updateLiability || ((id, data) => api.request(`/liabilities/${id}`, { method: 'PUT', body: JSON.stringify(data) }));
-                    const updated = await updateFn(id, payload);
+                    if (!apiUpdateLiability) throw new Error('Liability API method not available');
+                    const updated = await apiUpdateLiability(id, payload);
                     const idx = liabilities.findIndex(l => l.id == id);
                     if (idx !== -1) {
                         liabilities[idx] = { ...updated, createdAt: updated.created_at, updatedAt: updated.updated_at };
                     }
                     showNotification('Liability updated successfully!', 'success');
                 } else {
-                    const createFn = api.createLiability || (payload => api.request('/liabilities', { method: 'POST', body: JSON.stringify(payload) }));
-                    const created = await createFn(payload);
+                    if (!apiCreateLiability) throw new Error('Liability API method not available');
+                    const created = await apiCreateLiability(payload);
                     liabilities.push({ ...created, createdAt: created.created_at, updatedAt: created.updated_at });
                     showNotification('Liability added successfully!', 'success');
                 }
 
                 renderLiabilities();
+                updateOverview();
                 closeModal('liability');
             } catch (error) {
                 console.error('❌ Liability save error:', error);
@@ -2911,6 +3201,7 @@
                 await deleteFn(id);
                 liabilities = liabilities.filter(l => l.id != id);
                 renderLiabilities();
+                updateOverview();
                 showNotification('Liability deleted.', 'success');
             } catch (error) {
                 console.error('❌ Delete liability error:', error);
@@ -2921,16 +3212,21 @@
         // Insights
         function renderInsights() {
             const monthTransactions = getCurrentMonthTransactions();
-            const expenses = monthTransactions.filter(t => t.type === 'expense');
-            
-            const categoryTotals = {};
-            expenses.forEach(t => {
-                categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
-            });
+            const income = monthTransactions
+                .filter(t => t.type === 'income')
+                .reduce((sum, t) => sum + t.amount, 0);
+            const expenses = monthTransactions
+                .filter(t => t.type === 'expense')
+                .reduce((sum, t) => sum + t.amount, 0);
+            const totalLiabilities = liabilities.reduce((sum, l) => sum + (parseFloat(l.outstanding ?? l.amount ?? 0) || 0), 0);
+            const totalInvested = investments.reduce((sum, inv) => sum + (parseFloat(inv.amount_invested ?? 0) || 0), 0);
+            const savings = income - expenses;
+            const assets = savings + totalInvested;
+            const balance = assets - totalLiabilities;
 
-            const labels = Object.keys(categoryTotals);
-            const data = Object.values(categoryTotals);
-            const colors = labels.map(cat => categoryConfig[cat]?.color || '#f3f4f6');
+            const labels = ['Income', 'Expenses', 'Savings', 'Invested', 'Liabilities', 'Net Balance'];
+            const data = [income, expenses, savings, totalInvested, totalLiabilities, Math.abs(balance)];
+            const colors = ['#10b981', '#ef4444', '#8b5cf6', '#f43f5e', balance >= 0 ? '#2563eb' : '#f59e0b'];
 
             const ctx = document.getElementById('expenseChart').getContext('2d');
             
@@ -2938,11 +3234,11 @@
                 expenseChart.destroy();
             }
 
-            if (labels.length === 0) {
+            if (monthTransactions.length === 0 && totalLiabilities === 0) {
                 ctx.font = '16px Instrument Sans';
                 ctx.fillStyle = '#78716c';
                 ctx.textAlign = 'center';
-                ctx.fillText('No expense data for this month', ctx.canvas.width / 2, ctx.canvas.height / 2);
+                ctx.fillText('No transaction or liability data for this month', ctx.canvas.width / 2, ctx.canvas.height / 2);
                 return;
             }
 
@@ -2974,7 +3270,12 @@
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return context.label + ': ₹' + context.parsed.toLocaleString('en-IN');
+                                    const val = context.parsed;
+                                    let text = `${context.label}: ₹${val.toLocaleString('en-IN')}`;
+                                    if (context.label === 'Balance') {
+                                        text += balance < 0 ? ' (Negative)' : ' (Positive)';
+                                    }
+                                    return text;
                                 }
                             }
                         }
@@ -3269,15 +3570,25 @@
         }
 
         // Tab switching
-        function switchTab(tab) {
+        function switchTab(tab, element = null) {
+            console.log('switchTab', tab, element);
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
+            const tabButton = element || document.querySelector(`.tab[data-tab="${tab}"]`);
+            if (tabButton) {
+                tabButton.classList.add('active');
+            }
             
             ['transactions', 'budgets', 'goals', 'investments', 'liabilities', 'insights', 'integrations', 'audit'].forEach(section => {
-                document.getElementById(section + '-section').style.display = 'none';
+                const sectionEl = document.getElementById(section + '-section');
+                if (sectionEl) sectionEl.style.display = 'none';
             });
             
-            document.getElementById(tab + '-section').style.display = 'block';
+            const targetSection = document.getElementById(tab + '-section');
+            if (!targetSection) {
+                console.warn('switchTab failed: section not found', tab);
+                return;
+            }
+            targetSection.style.display = 'block';
             
             if (tab === 'insights') {
                 renderInsights();
@@ -3293,10 +3604,24 @@
         // Modal functions
         function openModal(type) {
             if (type === 'transaction') {
-                document.getElementById('transactionModalTitle').textContent = 'Add Transaction';
-                document.getElementById('transactionId').value = '';
-                document.getElementById('transactionSubmitBtn').textContent = 'Add Transaction';
-                document.getElementById('transactionDate').valueAsDate = new Date();
+                const transactionId = document.getElementById('transactionId').value;
+                const isEditMode = Boolean(transactionId);
+                if (!isEditMode) {
+                    document.getElementById('transactionModalTitle').textContent = 'Add Transaction';
+                    document.getElementById('transactionId').value = '';
+                    document.getElementById('transactionSaveBtn').style.display = 'inline-flex';
+                    document.getElementById('transactionUpdateBtn').style.display = 'none';
+                    document.getElementById('transactionSaveBtn').textContent = 'Add Transaction';
+                    document.getElementById('transactionDate').valueAsDate = new Date();
+                    document.getElementById('transactionCategory').value = 'Food';
+                    document.getElementById('transactionCategoryCustom').value = '';
+                    document.getElementById('transactionCategoryCustomGroup').style.display = 'none';
+                    document.getElementById('transactionRecurring').checked = false;
+                } else {
+                    document.getElementById('transactionModalTitle').textContent = 'Edit Transaction';
+                    document.getElementById('transactionSaveBtn').style.display = 'none';
+                    document.getElementById('transactionUpdateBtn').style.display = 'inline-flex';
+                }
             } else if (type === 'investment') {
                 document.getElementById('investmentModal').querySelector('.modal-title').textContent = 'Add Investment';
                 document.getElementById('investmentName').value = '';
@@ -3337,6 +3662,8 @@
             } else if (type === 'transaction') {
                 document.getElementById('transactionId').value = '';
                 document.getElementById('transactionNotes').value = '';
+                document.getElementById('transactionCategoryCustom').value = '';
+                document.getElementById('transactionCategoryCustomGroup').style.display = 'none';
             } else if (type === 'investment') {
                 document.getElementById('investmentNotes').value = '';
             } else if (type === 'liability') {
@@ -3349,8 +3676,43 @@
             } else if (type === 'budget') {
                 document.getElementById('budgetId').value = '';
                 document.getElementById('budgetCategory').value = 'Food';
+                document.getElementById('budgetCategoryCustom').value = '';
+                document.getElementById('budgetCategoryCustomGroup').style.display = 'none';
                 document.getElementById('budgetAmount').value = '';
             }
+        }
+
+        function handleCategorySelect(event, context) {
+            const selected = event.target.value;
+            const customGroup = document.getElementById(`${context}CategoryCustomGroup`);
+            const customInput = document.getElementById(`${context}CategoryCustom`);
+
+            if (selected === 'Other') {
+                customGroup.style.display = 'block';
+                customInput.required = true;
+            } else {
+                customGroup.style.display = 'none';
+                customInput.required = false;
+                customInput.value = '';
+            }
+        }
+
+        function setCategoryOption(category) {
+            if (!category || category.trim() === '' || category === 'Other') return;
+            category = category.trim();
+            if (!categoryOptions.has(category)) {
+                categoryOptions.add(category);
+            }
+            ['transactionCategory', 'budgetCategory'].forEach(selectId => {
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                if (![...select.options].some(o => o.value === category)) {
+                    const option = document.createElement('option');
+                    option.value = category;
+                    option.textContent = category;
+                    select.insertBefore(option, select.querySelector('option[value="Other"]'));
+                }
+            });
         }
 
         // Close modals on background click
@@ -3380,7 +3742,9 @@
 
             const totalIncome = Object.values(incomeBySource).reduce((a, b) => a + b, 0);
             const totalExpense = Object.values(expenseBySource).reduce((a, b) => a + b, 0);
-            const balance = totalIncome - totalExpense;
+            const totalLiabilities = liabilities.reduce((sum, l) => sum + (parseFloat(l.outstanding ?? l.amount ?? 0) || 0), 0);
+            const totalExpenseWithLiabilities = totalExpense + totalLiabilities;
+            const balance = totalIncome - totalExpenseWithLiabilities;
 
             let html = `
                 <div class="stat-grid">
@@ -3391,6 +3755,14 @@
                     <div class="stat-card">
                         <div class="stat-label">Total Expenses</div>
                         <div class="stat-value negative">${formatCurrency(totalExpense)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Liabilities</div>
+                        <div class="stat-value negative">${formatCurrency(totalLiabilities)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Net Balance</div>
+                        <div class="stat-value ${balance >= 0 ? 'positive' : 'negative'}">${formatCurrency(balance)}</div>
                     </div>
                 </div>
 
@@ -3456,6 +3828,37 @@
                     </div>
                 `;
             });
+
+            html += `
+                </div>
+
+                <div class="breakdown-section">
+                    <div class="breakdown-section-title">
+                        <span>Liabilities</span>
+                        <span style="font-family: 'JetBrains Mono', monospace; font-size: 14px;">${formatCurrency(totalLiabilities)}</span>
+                    </div>
+                `;
+
+            if (totalLiabilities > 0) {
+                html += `
+                    <div class="breakdown-item">
+                        <div class="breakdown-label">
+                            <div class="breakdown-icon" style="background: #fee2e2">🏦</div>
+                            <div class="breakdown-info">
+                                <div class="breakdown-name">Outstanding Loans</div>
+                                <div class="breakdown-count">${liabilities.length} liability${liabilities.length !== 1 ? 'ies' : ''}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="breakdown-amount negative">-${formatCurrency(totalLiabilities)}</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <p style="color: var(--text-secondary); margin: 10px 0;">No outstanding liabilities. Great work!</p>
+                `;
+            }
 
             html += `
                 </div>
@@ -3699,15 +4102,24 @@
             const totalExpense = monthTransactions
                 .filter(t => t.type === 'expense')
                 .reduce((sum, t) => sum + t.amount, 0);
-            
+
+            const totalLiabilities = liabilities.reduce((sum, l) => sum + (parseFloat(l.outstanding ?? l.amount ?? 0) || 0), 0);
+            const totalInvested = investments.reduce((sum, inv) => sum + (parseFloat(inv.amount_invested ?? 0) || 0), 0);
             const savings = totalIncome - totalExpense;
+            const assets = savings + totalInvested;
+            const balance = assets - totalLiabilities;
             const savingsRate = totalIncome > 0 ? ((savings / totalIncome) * 100).toFixed(1) : 0;
+            const investmentRate = totalIncome > 0 ? ((totalInvested / totalIncome) * 100).toFixed(1) : 0;
+            const expenseRatio = totalIncome > 0 ? ((totalExpense / totalIncome) * 100).toFixed(1) : 0;
 
             // Calculate savings by prevented categories
             const expenseByCategory = {};
             monthTransactions.filter(t => t.type === 'expense').forEach(t => {
                 expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + t.amount;
             });
+
+            const totalAssets = savings + totalInvested;
+            const netBalance = totalAssets - totalLiabilities;
 
             let html = `
                 <div class="stat-grid">
@@ -3720,8 +4132,24 @@
                         <div class="stat-value negative">${formatCurrency(totalExpense)}</div>
                     </div>
                     <div class="stat-card">
+                        <div class="stat-label">Total Invested</div>
+                        <div class="stat-value negative">${formatCurrency(totalInvested)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Liabilities</div>
+                        <div class="stat-value negative">${formatCurrency(totalLiabilities)}</div>
+                    </div>
+                    <div class="stat-card">
                         <div class="stat-label">Net Savings</div>
                         <div class="stat-value ${savings >= 0 ? 'positive' : 'negative'}">${formatCurrency(savings)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Assets (Save+Invest)</div>
+                        <div class="stat-value positive">${formatCurrency(assets)}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Net Balance</div>
+                        <div class="stat-value ${netBalance >= 0 ? 'positive' : 'negative'}">${formatCurrency(netBalance)}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">Savings Rate</div>
@@ -3849,26 +4277,44 @@
 
         // Initialize app
         async function init() {
-            await checkBackendHealth();
+            console.log('FinApp init start');
+            try {
+                await checkBackendHealth();
 
-            // Check authentication first
-            const isAuthenticated = await checkAuth();
-            if (!isAuthenticated) {
-                return; // Will be redirected to login
+                // Check authentication first
+                const isAuthenticated = await checkAuth();
+                if (!isAuthenticated) {
+                    console.warn('Not authenticated, redirecting to login.');
+                    return; // Will be redirected to login
+                }
+
+                await Database.init();
+                await Database.load();
+
+                console.log('FinApp loaded data', {
+                    transactions: transactions.length,
+                    budgets: budgets.length,
+                    goals: goals.length,
+                    investments: investments.length,
+                    liabilities: liabilities.length,
+                    integrations: Object.keys(integrations).length
+                });
+
+                renderTransactions();
+                renderBudgets();
+                renderGoals();
+                renderInvestments();
+                renderLiabilities();
+                updateOverview();
+                updateIntegrationUI();
+
+                // Keep backend health status refreshed.
+                setInterval(checkBackendHealth, 60_000);
+                console.log('FinApp init complete');
+            } catch (error) {
+                console.error('FinApp init failed', error);
+                showNotification('Initialization failed: ' + (error.message || error), 'error');
             }
-
-            await Database.init();
-            await Database.load();
-            renderTransactions();
-            renderBudgets();
-            renderGoals();
-            renderInvestments();
-            renderLiabilities();
-            updateOverview();
-            updateIntegrationUI();
-
-            // Keep backend health status refreshed.
-            setInterval(checkBackendHealth, 60_000);
         }
 
         // Notification helper function
@@ -3898,31 +4344,29 @@
             }, 3000);
         }
 
-        // Helper function for notifications
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                padding: 16px 24px;
-                background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-                color: white;
-                border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                z-index: 10000;
-                font-weight: 600;
-                animation: slideIn 0.3s ease;
-            `;
-            notification.textContent = message;
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.style.opacity = '0';
-                notification.style.transform = 'translateX(400px)';
-                notification.style.transition = 'all 0.3s';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
+        // Bind delegated tab click listeners as defense-in-depth for inline-onclick mismatch
+        const bindDelegatedListeners = () => {
+            console.log('FinApp binding delegated listeners');
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const t = tab.dataset.tab;
+                    console.log('delegated tab clicked', t);
+                    switchTab(t, tab);
+                });
+            });
+
+            document.addEventListener('click', (e) => {
+                const target = e.target;
+                if (!target) return;
+                console.log('global click', target.tagName, target.id, target.className);
+            }, { capture: true });
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bindDelegatedListeners);
+        } else {
+            bindDelegatedListeners();
         }
 
         init();
