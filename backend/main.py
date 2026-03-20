@@ -10,7 +10,7 @@ import os
 from uuid import uuid4
 
 from database import get_db, init_db, engine
-from models import User, Transaction, Asset, Document, Budget, Goal, Investment, Liability, Integration, AuditLog, Base
+from models import User, Transaction, Asset, Document, Budget, Goal, Investment, Liability, Integration, AuditLog, Base, UserRole
 from schemas import (
     UserCreate, User as UserSchema, Transaction as TransactionSchema,
     Asset as AssetSchema, AssetCreate, AssetUpdate,
@@ -21,12 +21,12 @@ from schemas import (
     Liability as LiabilitySchema, LiabilityCreate, LiabilityUpdate,
     Integration as IntegrationSchema, IntegrationCreate, IntegrationUpdate,
     AuditLog as AuditLogSchema, Token, DashboardStats, TransactionFilter,
-    AuditLogFilter, LoginRequest
+    AuditLogFilter, LoginRequest, UserRoleUpdate, UserStatusUpdate
 )
 from auth import (
     get_password_hash, authenticate_user, create_access_token,
     get_current_active_user, ACCESS_TOKEN_EXPIRE_MINUTES,
-    get_client_ip, check_registration_rate_limit
+    get_client_ip, check_registration_rate_limit, require_admin, require_write_access
 )
 from integration_providers import get_provider
 
@@ -118,11 +118,13 @@ async def register(user: UserCreate, request: Request, db: Session = Depends(get
     
     # Create new user
     hashed_password = get_password_hash(user.password)
+    user_count = db.query(User).count()
     db_user = User(
         email=user.email,
         username=user.username,
         full_name=user.full_name,
-        hashed_password=hashed_password
+        hashed_password=hashed_password,
+        role=UserRole.ADMIN.value if user_count == 0 else UserRole.USER.value
     )
     db.add(db_user)
     db.commit()
@@ -186,6 +188,85 @@ def read_users_me(current_user: User = Depends(get_current_active_user)):
     return current_user
 
 
+@app.get("/api/users", response_model=List[UserSchema])
+def list_users(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """List all users. Admin only."""
+    return db.query(User).order_by(User.created_at.asc()).all()
+
+
+@app.put("/api/users/{user_id}/role", response_model=UserSchema)
+def update_user_role(
+    user_id: int,
+    role_update: UserRoleUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Update a user's role. Admin only."""
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if db_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot change your own role")
+    if db_user.role == UserRole.ADMIN.value and role_update.role.value != UserRole.ADMIN.value:
+        admin_count = db.query(User).filter(User.role == UserRole.ADMIN.value, User.is_active == True).count()
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="At least one active admin must remain")
+
+    db_user.role = role_update.role.value
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+@app.put("/api/users/{user_id}/status", response_model=UserSchema)
+def update_user_status(
+    user_id: int,
+    status_update: UserStatusUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Block or unblock a user. Admin only."""
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if db_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot block your own account")
+    if db_user.role == UserRole.ADMIN.value and status_update.is_active is False:
+        admin_count = db.query(User).filter(User.role == UserRole.ADMIN.value, User.is_active == True).count()
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="At least one active admin must remain")
+
+    db_user.is_active = status_update.is_active
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+@app.delete("/api/users/{user_id}")
+def delete_user(
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete a user account. Admin only."""
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if db_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    if db_user.role == UserRole.ADMIN.value:
+        admin_count = db.query(User).filter(User.role == UserRole.ADMIN.value, User.is_active == True).count()
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="At least one active admin must remain")
+
+    db.delete(db_user)
+    db.commit()
+    return {"message": "User deleted successfully"}
+
+
 # ==================== Transaction Endpoints ====================
 
 @app.get("/api/transactions", response_model=List[TransactionSchema])
@@ -205,7 +286,7 @@ def get_transactions(
 @app.post("/api/transactions/upload", response_model=List[TransactionSchema])
 def upload_transactions_csv(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Upload transactions from a CSV file.
@@ -277,7 +358,7 @@ def upload_transactions_csv(
 def create_transaction(
     transaction: TransactionCreate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Create a new transaction"""
@@ -303,7 +384,7 @@ def update_transaction(
     transaction_id: int,
     transaction: TransactionUpdate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Update a transaction"""
@@ -362,7 +443,7 @@ def get_assets(
 @app.post("/api/assets", response_model=AssetSchema)
 def create_asset(
     asset: AssetCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     db_asset = Asset(**asset.dict(), user_id=current_user.id)
@@ -376,7 +457,7 @@ def create_asset(
 def update_asset(
     asset_id: int,
     asset: AssetUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     db_asset = db.query(Asset).filter(Asset.id == asset_id, Asset.user_id == current_user.id).first()
@@ -395,7 +476,7 @@ def update_asset(
 @app.delete("/api/assets/{asset_id}")
 def delete_asset(
     asset_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     db_asset = db.query(Asset).filter(Asset.id == asset_id, Asset.user_id == current_user.id).first()
@@ -434,7 +515,7 @@ def upload_document(
     folder: str = Form("General"),
     subfolder: str = Form(""),
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     filename = f"{uuid4().hex}_{file.filename}"
@@ -471,7 +552,7 @@ def upload_document(
 @app.delete("/api/documents/{document_id}")
 def delete_document(
     document_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     db_doc = db.query(Document).filter(Document.id == document_id, Document.user_id == current_user.id).first()
@@ -490,7 +571,7 @@ def delete_document(
 def delete_transaction(
     transaction_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Delete a transaction"""
@@ -533,7 +614,7 @@ def get_budgets(
 def create_budget(
     budget: BudgetCreate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Create a new budget"""
@@ -555,7 +636,7 @@ def update_budget(
     budget_id: int,
     budget_update: BudgetUpdate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Update an existing budget"""
@@ -585,7 +666,7 @@ def update_budget(
 def delete_budget(
     budget_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Delete a budget"""
@@ -623,7 +704,7 @@ def get_goals(
 def create_goal(
     goal: GoalCreate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Create a new goal"""
@@ -645,7 +726,7 @@ def update_goal(
     goal_id: int,
     goal_update: GoalUpdate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Update an existing goal"""
@@ -675,7 +756,7 @@ def update_goal(
 def delete_goal(
     goal_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Delete a goal"""
@@ -712,7 +793,7 @@ def get_investments(
 def create_investment(
     investment: InvestmentCreate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Create a new investment record"""
@@ -734,7 +815,7 @@ def update_investment(
     investment_id: int,
     investment_update: InvestmentUpdate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Update an existing investment"""
@@ -764,7 +845,7 @@ def update_investment(
 def delete_investment(
     investment_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Delete an investment record"""
@@ -801,7 +882,7 @@ def get_liabilities(
 def create_liability(
     liability: LiabilityCreate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Create a new liability record"""
@@ -823,7 +904,7 @@ def update_liability(
     liability_id: int,
     liability_update: LiabilityUpdate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Update an existing liability"""
@@ -853,7 +934,7 @@ def update_liability(
 def delete_liability(
     liability_id: int,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Delete a liability record"""
@@ -893,7 +974,7 @@ def get_integrations(
 def create_integration(
     integration: IntegrationCreate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Create or update an integration"""
@@ -936,7 +1017,7 @@ def update_integration(
     app_name: str,
     integration_update: IntegrationUpdate,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Update an existing integration (e.g., disconnect or update credentials)."""
@@ -972,7 +1053,7 @@ def update_integration(
 def delete_integration(
     app_name: str,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Delete an integration configuration."""
@@ -998,7 +1079,7 @@ def delete_integration(
 def sync_integration(
     app_name: str,
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Sync transactions from an integration"""

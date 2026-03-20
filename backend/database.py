@@ -110,9 +110,80 @@ def ensure_document_folder_columns():
             print(f"[database] Warning: could not ensure folder/subfolder columns in documents: {e}")
 
 
+def ensure_user_role_column():
+    """Ensure role column exists on users table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(users)')).fetchall()]
+                if 'role' not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(32) DEFAULT 'user'"))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM users LIKE 'role'")).fetchone()
+                if not exists:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(32) NOT NULL DEFAULT 'user'"))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='role'")).fetchone()
+                if not exists:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(32) NOT NULL DEFAULT 'user'"))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure role column in users: {e}")
+
+
+def ensure_bootstrap_admin():
+    """Ensure there is at least one admin user by promoting the oldest account if needed."""
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        try:
+            admin_exists = conn.execute(
+                text("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1")
+            ).fetchone()
+            if admin_exists:
+                return
+
+            first_user = conn.execute(
+                text("SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1")
+            ).fetchone()
+            if first_user:
+                conn.execute(
+                    text("UPDATE users SET role = 'admin' WHERE id = :user_id"),
+                    {"user_id": first_user[0]}
+                )
+        except Exception as e:
+            print(f"[database] Warning: could not ensure bootstrap admin user: {e}")
+
+
+def ensure_asset_balance_column():
+    """Ensure include_in_balance column exists on assets table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(assets)')).fetchall()]
+                if 'include_in_balance' not in columns:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN include_in_balance BOOLEAN DEFAULT 1'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM assets LIKE 'include_in_balance'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN include_in_balance BOOLEAN NOT NULL DEFAULT TRUE'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='assets' AND column_name='include_in_balance'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN include_in_balance BOOLEAN NOT NULL DEFAULT TRUE'))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure include_in_balance column in assets: {e}")
+
+
 def init_db():
     """Initialize database tables"""
     from models import Base
     Base.metadata.create_all(bind=engine)
+    ensure_user_role_column()
+    ensure_bootstrap_admin()
+    ensure_asset_balance_column()
     ensure_transaction_recurring_column()
     ensure_document_folder_columns()

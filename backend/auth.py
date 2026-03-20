@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 import os
 
 from database import get_db
-from models import User
+from models import User, UserRole
 from schemas import TokenData
 
 # Configuration
@@ -125,6 +125,26 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     return current_user
 
 
+async def require_admin(current_user: User = Depends(get_current_active_user)) -> User:
+    """Require admin role."""
+    if current_user.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required"
+        )
+    return current_user
+
+
+async def require_write_access(current_user: User = Depends(get_current_active_user)) -> User:
+    """Require a non-readonly role for write operations."""
+    if current_user.role == UserRole.READONLY.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your role is readonly. You can view data but cannot make changes."
+        )
+    return current_user
+
+
 def check_registration_rate_limit(ip_address: str) -> bool:
     """
     Simple rate limit check
@@ -141,6 +161,8 @@ __all__ = [
     'authenticate_user',
     'get_current_user',
     'get_current_active_user',
+    'require_admin',
+    'require_write_access',
     'get_client_ip',
     'check_registration_rate_limit',
     'ACCESS_TOKEN_EXPIRE_MINUTES'

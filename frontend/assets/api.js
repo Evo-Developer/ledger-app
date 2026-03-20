@@ -412,6 +412,31 @@ class API {
         return this.request('/audit-logs');
     }
 
+    // Users / RBAC
+    async getUsers() {
+        return this.request('/users');
+    }
+
+    async updateUserRole(userId, role) {
+        return this.request(`/users/${userId}/role`, {
+            method: 'PUT',
+            body: JSON.stringify({ role }),
+        });
+    }
+
+    async updateUserStatus(userId, isActive) {
+        return this.request(`/users/${userId}/status`, {
+            method: 'PUT',
+            body: JSON.stringify({ is_active: isActive }),
+        });
+    }
+
+    async deleteUser(userId) {
+        return this.request(`/users/${userId}`, {
+            method: 'DELETE',
+        });
+    }
+
     // Dashboard
     async getDashboardStats() {
         return this.request('/dashboard/stats');

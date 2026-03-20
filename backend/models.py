@@ -7,6 +7,12 @@ import enum
 Base = declarative_base()
 
 
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    USER = "user"
+    READONLY = "readonly"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -15,6 +21,7 @@ class User(Base):
     username = Column(String(100), unique=True, index=True, nullable=False)
     full_name = Column(String(255))
     hashed_password = Column(String(255), nullable=False)
+    role = Column(String(32), nullable=False, default=UserRole.USER.value)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -65,6 +72,7 @@ class Asset(Base):
     name = Column(String(255), nullable=False)
     type = Column(String(100), nullable=True)
     value = Column(Float, nullable=False, default=0.0)
+    include_in_balance = Column(Boolean, nullable=False, default=True)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

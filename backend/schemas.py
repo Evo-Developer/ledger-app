@@ -16,6 +16,12 @@ class AuditAction(str, Enum):
     SYNC = "sync"
 
 
+class UserRole(str, Enum):
+    ADMIN = "admin"
+    USER = "user"
+    READONLY = "readonly"
+
+
 # User Schemas
 class UserBase(BaseModel):
     email: EmailStr
@@ -36,6 +42,7 @@ class UserUpdate(BaseModel):
 
 class User(UserBase):
     id: int
+    role: UserRole
     is_active: bool
     created_at: datetime
 
@@ -86,6 +93,7 @@ class AssetBase(BaseModel):
     name: str
     type: Optional[str] = None
     value: float
+    include_in_balance: bool = True
     description: Optional[str] = None
 
 
@@ -97,6 +105,7 @@ class AssetUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     value: Optional[float] = None
+    include_in_balance: Optional[bool] = None
     description: Optional[str] = None
 
 
@@ -314,6 +323,14 @@ class TokenData(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class UserRoleUpdate(BaseModel):
+    role: UserRole
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
 
 
 # Dashboard Stats
