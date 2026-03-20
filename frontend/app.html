@@ -36,28 +36,116 @@
             --gradient-info: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
         }
 
+        body[data-theme="dark"] {
+            --bg: #0f172a;
+            --surface: #111827;
+            --border: #334155;
+            --text: #e5eefc;
+            --text-secondary: #94a3b8;
+            --accent: #60a5fa;
+            --accent-dark: #3b82f6;
+            --accent-light: #93c5fd;
+            --success: #34d399;
+            --danger: #f87171;
+            --warning: #fbbf24;
+            --info: #22d3ee;
+            --shadow: 0 1px 3px rgba(2, 6, 23, 0.4), 0 1px 2px rgba(2, 6, 23, 0.3);
+            --shadow-md: 0 10px 20px rgba(2, 6, 23, 0.35);
+            --shadow-lg: 0 24px 48px rgba(2, 6, 23, 0.45);
+            --shadow-blue: 0 10px 28px rgba(96, 165, 250, 0.18);
+            --gradient-primary: linear-gradient(135deg, #60a5fa 0%, #22d3ee 100%);
+            --gradient-success: linear-gradient(135deg, #34d399 0%, #22d3ee 100%);
+            --gradient-danger: linear-gradient(135deg, #fb7185 0%, #f87171 100%);
+            --gradient-info: linear-gradient(135deg, #22d3ee 0%, #60a5fa 100%);
+        }
+
         body {
             font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg);
             background-image: 
-                radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.03) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(37, 99, 235, 0.03) 0%, transparent 50%);
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280' viewBox='0 0 280 280'%3E%3Cg fill='none' stroke='%233b82f6' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M28 220c22-24 40-38 56-38 18 0 28 16 42 16 18 0 24-26 48-26 16 0 30 10 58 36' opacity='.22'/%3E%3Cpath d='M34 92h46M57 69v46' opacity='.14'/%3E%3Ccircle cx='208' cy='74' r='22' opacity='.12'/%3E%3Cpath d='M200 74h16M208 66v16' opacity='.12'/%3E%3Cpath d='M86 126v34M102 138v22M118 114v46M134 132v28M150 120v40' opacity='.18'/%3E%3Cpath d='M170 210h44' opacity='.12'/%3E%3Cpath d='M176 198v24M192 190v32M208 202v20' opacity='.16'/%3E%3C/g%3E%3C/svg%3E"),
+                radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.06) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(37, 99, 235, 0.05) 0%, transparent 50%);
+            background-size: 280px 280px, auto, auto;
+            background-repeat: repeat, no-repeat, no-repeat;
             background-attachment: fixed;
             color: var(--text);
             line-height: 1.6;
             overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.55;
+            background-image:
+                radial-gradient(circle at 12% 18%, rgba(16, 185, 129, 0.08) 0%, transparent 22%),
+                radial-gradient(circle at 88% 16%, rgba(59, 130, 246, 0.08) 0%, transparent 24%),
+                radial-gradient(circle at 76% 82%, rgba(245, 158, 11, 0.07) 0%, transparent 20%);
+            z-index: 0;
+        }
+
+        body[data-theme="dark"]::before {
+            opacity: 0.42;
+        }
+
+        body[data-theme="dark"] {
+            background-image:
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280' viewBox='0 0 280 280'%3E%3Cg fill='none' stroke='%2393c5fd' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M28 220c22-24 40-38 56-38 18 0 28 16 42 16 18 0 24-26 48-26 16 0 30 10 58 36' opacity='.2'/%3E%3Cpath d='M34 92h46M57 69v46' opacity='.13'/%3E%3Ccircle cx='208' cy='74' r='22' opacity='.1'/%3E%3Cpath d='M200 74h16M208 66v16' opacity='.1'/%3E%3Cpath d='M86 126v34M102 138v22M118 114v46M134 132v28M150 120v40' opacity='.16'/%3E%3Cpath d='M170 210h44' opacity='.1'/%3E%3Cpath d='M176 198v24M192 190v32M208 202v20' opacity='.14'/%3E%3C/g%3E%3C/svg%3E"),
+                radial-gradient(circle at 20% 50%, rgba(96, 165, 250, 0.09) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(34, 211, 238, 0.08) 0%, transparent 50%);
         }
 
         .app-container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 24px;
+            position: relative;
+            z-index: 1;
         }
 
         header {
             margin-bottom: 40px;
             animation: slideDown 0.6s ease-out;
             position: relative;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .theme-toggle {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+            border-color: var(--accent-light);
+        }
+
+        .theme-toggle-icon {
+            font-size: 14px;
+            line-height: 1;
         }
 
         h1 {
@@ -103,6 +191,7 @@
             background-clip: padding-box;
             position: relative;
             animation: fadeInUp 0.6s ease-out backwards;
+            min-height: 182px;
         }
 
         .card::before {
@@ -174,6 +263,21 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            line-height: 1.12;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .card-value.size-md {
+            font-size: 32px;
+        }
+
+        .card-value.size-sm {
+            font-size: 28px;
+        }
+
+        .card-value.size-xs {
+            font-size: 24px;
         }
 
         .card-value.positive {
@@ -1122,6 +1226,11 @@
         }
 
         @media (max-width: 768px) {
+            .header-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
             .grid {
                 grid-template-columns: 1fr;
             }
@@ -1177,45 +1286,58 @@
 <body>
     <div class="app-container">
         <header>
-            <h1>FinApp</h1>
-            <p class="subtitle">Track your finances with clarity • Database-backed with full audit trail</p>
-            <p class="subtitle" id="backendStatus" style="font-size:13px; opacity:0.85; margin-top: 4px;">Checking backend…</p>
+            <div class="header-row">
+                <div>
+                    <h1>FinApp</h1>
+                    <p class="subtitle">Track your finances with clarity ✨ • Database-backed with full audit trail 🛡️</p>
+                    <p class="subtitle" id="backendStatus" style="font-size:13px; opacity:0.85; margin-top: 4px;">Checking backend…</p>
+                </div>
+                <button class="theme-toggle" id="themeToggle" type="button" onclick="toggleTheme()">
+                    <span class="theme-toggle-icon" id="themeToggleIcon">🌙</span>
+                    <span id="themeToggleLabel">Dark Mode</span>
+                </button>
+            </div>
         </header>
 
         <!-- Overview Cards -->
         <div class="grid">
             <div class="card clickable-card" onclick="showBalanceBreakdown()">
-                <div class="card-title">Balance <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-title">💳 Balance <span style="font-size: 12px; opacity: 0.6;">→</span></div>
                 <div class="card-value" id="totalBalance">₹0</div>
                 <div class="card-change" id="balanceChange">—</div>
             </div>
             <div class="card clickable-card" onclick="showIncomeBreakdown()">
-                <div class="card-title">Income <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-title">💰 Income <span style="font-size: 12px; opacity: 0.6;">→</span></div>
                 <div class="card-value positive" id="totalIncome">₹0</div>
                 <div class="card-change" id="incomeChange">This month</div>
             </div>
             <div class="card clickable-card" onclick="switchTab('investments')">
-                <div class="card-title">Invested <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-title">📈 Invested <span style="font-size: 12px; opacity: 0.6;">→</span></div>
                 <div class="card-value negative" id="totalInvested">₹0</div>
                 <div class="card-change" id="investedChange">Portfolio</div>
             </div>
+            <div class="card clickable-card" onclick="switchTab('assets')">
+                <div class="card-title">🏠 Assets <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-value positive" id="totalAssetsValue">₹0</div>
+                <div class="card-change" id="assetsChange">Tracked value</div>
+            </div>
             <div class="card clickable-card" onclick="showSavingsBreakdown()">
-                <div class="card-title">Savings <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-title">🐷 Savings <span style="font-size: 12px; opacity: 0.6;">→</span></div>
                 <div class="card-value positive" id="totalSavings">₹0</div>
                 <div class="card-change" id="savingsLiabilityRatio">Liability cover: —</div>
             </div>
             <div class="card clickable-card" onclick="showExpenseBreakdown()">
-                <div class="card-title">Expenses <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-title">🧾 Expenses <span style="font-size: 12px; opacity: 0.6;">→</span></div>
                 <div class="card-value negative" id="totalExpenses">₹0</div>
                 <div class="card-change" id="expensesChange">This month</div>
             </div>
             <div class="card clickable-card" onclick="switchTab('liabilities')">
-                <div class="card-title">Liabilities <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-title">🏦 Liabilities <span style="font-size: 12px; opacity: 0.6;">→</span></div>
                 <div class="card-value negative" id="totalLiabilities">₹0</div>
                 <div class="card-change" id="liabilitiesChange">Outstanding</div>
             </div>
             <div class="card clickable-card" onclick="showSavingsBreakdown()">
-                <div class="card-title">Savings Rate <span style="font-size: 12px; opacity: 0.6;">→</span></div>
+                <div class="card-title">📊 Savings Rate <span style="font-size: 12px; opacity: 0.6;">→</span></div>
                 <div class="card-value" id="savingsRate">0%</div>
                 <div class="card-change" id="savingsChange">Of income</div>
             </div>
@@ -1223,16 +1345,16 @@
 
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab active" data-tab="transactions" onclick="switchTab('transactions', this)">Transactions</button>
-            <button class="tab" data-tab="budgets" onclick="switchTab('budgets', this)">Budgets</button>
-            <button class="tab" data-tab="goals" onclick="switchTab('goals', this)">Goals</button>
-            <button class="tab" data-tab="investments" onclick="switchTab('investments', this)">Investments</button>
-            <button class="tab" data-tab="liabilities" onclick="switchTab('liabilities', this)">Liabilities</button>
-            <button class="tab" data-tab="insights" onclick="switchTab('insights', this)">Insights</button>
-            <button class="tab" data-tab="assets" onclick="switchTab('assets', this)">Assets</button>
-            <button class="tab" data-tab="documents" onclick="switchTab('documents', this)">Documents</button>
-            <button class="tab" data-tab="integrations" onclick="switchTab('integrations', this)">Integrations</button>
-            <button class="tab" data-tab="audit" onclick="switchTab('audit', this)">Audit Trail</button>
+            <button class="tab active" data-tab="transactions" onclick="switchTab('transactions', this)">💸 Transactions</button>
+            <button class="tab" data-tab="budgets" onclick="switchTab('budgets', this)">💰 Budgets</button>
+            <button class="tab" data-tab="goals" onclick="switchTab('goals', this)">🎯 Goals</button>
+            <button class="tab" data-tab="investments" onclick="switchTab('investments', this)">📈 Investments</button>
+            <button class="tab" data-tab="liabilities" onclick="switchTab('liabilities', this)">🏦 Liabilities</button>
+            <button class="tab" data-tab="insights" onclick="switchTab('insights', this)">🧠 Insights</button>
+            <button class="tab" data-tab="assets" onclick="switchTab('assets', this)">🏠 Assets</button>
+            <button class="tab" data-tab="documents" onclick="switchTab('documents', this)">📄 Documents</button>
+            <button class="tab" data-tab="integrations" onclick="switchTab('integrations', this)">🔗 Integrations</button>
+            <button class="tab" data-tab="audit" onclick="switchTab('audit', this)">🛡️ Audit Trail</button>
         </div>
 
         <!-- Transactions Section -->
@@ -1689,6 +1811,18 @@
                     <label class="form-label">Title</label>
                     <input type="text" class="form-input" id="documentTitle" required placeholder="Property deed, ID proof" />
                 </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Folder</label>
+                        <input type="text" class="form-input" id="documentFolder" list="documentFolderOptions" placeholder="e.g., Banking, Tax, Property" oninput="updateDocumentFolderOptions()" />
+                        <datalist id="documentFolderOptions"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Subfolder</label>
+                        <input type="text" class="form-input" id="documentSubfolder" list="documentSubfolderOptions" placeholder="e.g., 2026, Home Loan, Statements" />
+                        <datalist id="documentSubfolderOptions"></datalist>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label class="form-label">File</label>
                     <input type="file" class="form-input" id="documentFile" required />
@@ -1764,7 +1898,7 @@
     <div id="investmentModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Add Investment</h3>
+                <h3 class="modal-title" id="investmentModalTitle">Add Investment</h3>
                 <button class="close-btn" onclick="closeModal('investment')">&times;</button>
             </div>
             <form onsubmit="addInvestment(event)">
@@ -1791,7 +1925,10 @@
                     <label class="form-label">Notes</label>
                     <textarea class="form-input" id="investmentNotes" placeholder="Optional notes"></textarea>
                 </div>
-                <button type="submit" class="btn" style="width: 100%;">Save Investment</button>
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" class="btn" style="flex: 1;" id="investmentSaveBtn">Add Investment</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1; display: none;" id="investmentUpdateBtn">Update Investment</button>
+                </div>
             </form>
         </div>
     </div>
@@ -1800,7 +1937,7 @@
     <div id="liabilityModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Add Liability</h3>
+                <h3 class="modal-title" id="liabilityModalTitle">Add Liability</h3>
                 <button class="close-btn" onclick="closeModal('liability')">&times;</button>
             </div>
             <form onsubmit="addLiability(event)">
@@ -1837,7 +1974,10 @@
                     <label class="form-label">Notes</label>
                     <textarea class="form-input" id="liabilityNotes" placeholder="Optional notes"></textarea>
                 </div>
-                <button type="submit" class="btn" style="width: 100%;">Save Liability</button>
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" class="btn" style="flex: 1;" id="liabilitySaveBtn">Add Liability</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1; display: none;" id="liabilityUpdateBtn">Update Liability</button>
+                </div>
             </form>
         </div>
     </div>
@@ -2050,9 +2190,11 @@
                 async deleteAsset(id) { return this.request(`/assets/${id}`, { method: 'DELETE' }); },
 
                 async getDocuments() { return this.request('/documents'); },
-                async uploadDocument(title, file) {
+                async uploadDocument(title, file, folder = 'General', subfolder = '') {
                     const formData = new FormData();
                     formData.append('title', title);
+                    formData.append('folder', folder || 'General');
+                    formData.append('subfolder', subfolder || '');
                     formData.append('file', file);
                     const headers = { ...this.getHeaders() };
                     delete headers['Content-Type'];
@@ -2086,6 +2228,38 @@
             console.error('Unhandled promise rejection:', event.reason);
             showNotification(`Unhandled rejection: ${event.reason}`, 'error');
         });
+
+        const THEME_STORAGE_KEY = 'finapp_theme';
+
+        function getPreferredTheme() {
+            const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+            if (savedTheme === 'light' || savedTheme === 'dark') {
+                return savedTheme;
+            }
+
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+        }
+
+        function applyTheme(theme) {
+            document.body.setAttribute('data-theme', theme);
+            localStorage.setItem(THEME_STORAGE_KEY, theme);
+
+            const iconEl = document.getElementById('themeToggleIcon');
+            const labelEl = document.getElementById('themeToggleLabel');
+            if (iconEl) {
+                iconEl.textContent = theme === 'dark' ? '☀️' : '🌙';
+            }
+            if (labelEl) {
+                labelEl.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+            }
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.body.getAttribute('data-theme') || 'light';
+            applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+        }
 
         // ==================== AUTHENTICATION CHECK ====================
         let currentUser = null;
@@ -2395,6 +2569,23 @@
             return '₹' + Math.abs(amount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         }
 
+        function setAdaptiveCardValue(elementId, value) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            const text = String(value);
+            el.textContent = text;
+            el.classList.remove('size-md', 'size-sm', 'size-xs');
+
+            if (text.length >= 18) {
+                el.classList.add('size-xs');
+            } else if (text.length >= 14) {
+                el.classList.add('size-sm');
+            } else if (text.length >= 11) {
+                el.classList.add('size-md');
+            }
+        }
+
         function formatDateTime(isoString) {
             const date = new Date(isoString);
             return date.toLocaleString('en-IN', {
@@ -2573,13 +2764,14 @@
             const investmentRate = income > 0 ? ((totalInvested / income) * 100).toFixed(0) : 0;
             const expenseRatio = income > 0 ? ((expenses / income) * 100).toFixed(0) : 0;
 
-            document.getElementById('totalBalance').textContent = formatCurrency(balance);
-            document.getElementById('totalIncome').textContent = formatCurrency(income);
-            document.getElementById('totalInvested').textContent = formatCurrency(totalInvested);
-            document.getElementById('totalSavings').textContent = formatCurrency(savings);
-            document.getElementById('totalExpenses').textContent = formatCurrency(expenses);
-            document.getElementById('totalLiabilities').textContent = formatCurrency(totalLiabilities);
-            document.getElementById('savingsRate').textContent = savingsRate + '%';
+            setAdaptiveCardValue('totalBalance', formatCurrency(balance));
+            setAdaptiveCardValue('totalIncome', formatCurrency(income));
+            setAdaptiveCardValue('totalInvested', formatCurrency(totalInvested));
+            setAdaptiveCardValue('totalAssetsValue', formatCurrency(totalAssetsValue));
+            setAdaptiveCardValue('totalSavings', formatCurrency(savings));
+            setAdaptiveCardValue('totalExpenses', formatCurrency(expenses));
+            setAdaptiveCardValue('totalLiabilities', formatCurrency(totalLiabilities));
+            setAdaptiveCardValue('savingsRate', savingsRate + '%');
             document.getElementById('savingsLiabilityRatio').textContent = `Liability cover: ${liabilityCover === '—' ? '—' : liabilityCover + '%'} `;
 
         }
@@ -3184,6 +3376,17 @@
             `).join('');
         }
 
+        function resetAssetModal() {
+            document.getElementById('assetModalTitle').textContent = 'Add Asset';
+            document.getElementById('assetId').value = '';
+            document.getElementById('assetName').value = '';
+            document.getElementById('assetType').value = '';
+            document.getElementById('assetValue').value = '';
+            document.getElementById('assetDescription').value = '';
+            document.getElementById('assetSaveBtn').style.display = 'inline-flex';
+            document.getElementById('assetUpdateBtn').style.display = 'none';
+        }
+
         async function saveAsset(e, explicitUpdate = false) {
             e.preventDefault();
 
@@ -3234,7 +3437,7 @@
             document.getElementById('assetDescription').value = asset.description || '';
             document.getElementById('assetSaveBtn').style.display = 'none';
             document.getElementById('assetUpdateBtn').style.display = 'inline-flex';
-            openModal('asset');
+            document.getElementById('assetModal').classList.add('active');
         }
 
         async function deleteAsset(id) {
@@ -3259,6 +3462,8 @@
             const list = document.getElementById('documentList');
             if (!list) return;
 
+            updateDocumentFolderOptions();
+
             if (documents.length === 0) {
                 list.innerHTML = `
                     <div class="empty-state">
@@ -3269,25 +3474,76 @@
                 return;
             }
 
-            list.innerHTML = documents.map(doc => `
+            const groupedDocuments = {};
+            documents.forEach((doc) => {
+                const folder = doc.folder || 'General';
+                const subfolder = doc.subfolder || 'Unsorted';
+                if (!groupedDocuments[folder]) {
+                    groupedDocuments[folder] = {};
+                }
+                if (!groupedDocuments[folder][subfolder]) {
+                    groupedDocuments[folder][subfolder] = [];
+                }
+                groupedDocuments[folder][subfolder].push(doc);
+            });
+
+            list.innerHTML = Object.entries(groupedDocuments).map(([folder, subfolders]) => `
                 <div class="goal-item">
-                    <div class="goal-header" style="align-items: center; gap: 16px;">
-                        <div>
-                            <h3>${doc.title}</h3>
-                            <p class="goal-target">Filename: ${doc.file_name}</p>
-                        </div>
-                        <div class="goal-progress-text">
-                            <a class="btn btn-secondary" href="${doc.url}" target="_blank">Download</a>
-                            <button class="btn btn-danger" onclick="deleteDocument(${doc.id})">Delete</button>
+                    <div class="goal-header">
+                        <div class="goal-info">
+                            <h3>📁 ${folder}</h3>
+                            <p class="goal-target">${Object.values(subfolders).reduce((sum, items) => sum + items.length, 0)} document(s)</p>
                         </div>
                     </div>
+                    ${Object.entries(subfolders).map(([subfolder, docs]) => `
+                        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+                            <h4 style="font-size: 14px; margin-bottom: 12px; color: var(--text-secondary);">📂 ${subfolder}</h4>
+                            <div style="display: grid; gap: 12px;">
+                                ${docs.map(doc => `
+                                    <div class="goal-item" style="margin: 0; box-shadow: none;">
+                                        <div class="goal-header" style="align-items: center; gap: 16px;">
+                                            <div>
+                                                <h3>${doc.title}</h3>
+                                                <p class="goal-target">Filename: ${doc.file_name}</p>
+                                            </div>
+                                            <div class="goal-progress-text">
+                                                <a class="btn btn-secondary" href="${doc.url}" target="_blank">Download</a>
+                                                <button class="btn btn-danger" onclick="deleteDocument(${doc.id})">Delete</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
             `).join('');
+        }
+
+        function updateDocumentFolderOptions() {
+            const folderOptions = document.getElementById('documentFolderOptions');
+            const subfolderOptions = document.getElementById('documentSubfolderOptions');
+            const folderInput = document.getElementById('documentFolder');
+            if (!folderOptions || !subfolderOptions || !folderInput) return;
+
+            const folders = [...new Set(documents.map(doc => doc.folder).filter(Boolean))].sort();
+            folderOptions.innerHTML = folders.map(folder => `<option value="${folder}"></option>`).join('');
+
+            const selectedFolder = folderInput.value.trim();
+            const subfolders = [...new Set(
+                documents
+                    .filter(doc => (doc.folder || 'General') === (selectedFolder || 'General'))
+                    .map(doc => doc.subfolder)
+                    .filter(Boolean)
+            )].sort();
+            subfolderOptions.innerHTML = subfolders.map(subfolder => `<option value="${subfolder}"></option>`).join('');
         }
 
         async function uploadDocument(e) {
             e.preventDefault();
             const title = document.getElementById('documentTitle').value;
+            const folder = document.getElementById('documentFolder').value.trim() || 'General';
+            const subfolder = document.getElementById('documentSubfolder').value.trim();
             const fileInput = document.getElementById('documentFile');
             if (!fileInput.files.length) {
                 showNotification('Select a file to upload.', 'error');
@@ -3296,7 +3552,7 @@
 
             const file = fileInput.files[0];
             try {
-                const uploaded = await api.uploadDocument(title, file);
+                const uploaded = await api.uploadDocument(title, file, folder, subfolder);
                 documents.push({ ...uploaded, uploadedAt: uploaded.uploaded_at, url: uploaded.url });
                 renderDocuments();
                 showNotification('Document uploaded successfully.', 'success');
@@ -3362,6 +3618,18 @@
             }).join('');
         }
 
+        function resetInvestmentModal() {
+            document.getElementById('investmentModalTitle').textContent = 'Add Investment';
+            document.getElementById('investmentId').value = '';
+            document.getElementById('investmentName').value = '';
+            document.getElementById('investmentType').value = '';
+            document.getElementById('investmentAmount').value = '';
+            document.getElementById('investmentValue').value = '';
+            document.getElementById('investmentNotes').value = '';
+            document.getElementById('investmentSaveBtn').style.display = 'inline-flex';
+            document.getElementById('investmentUpdateBtn').style.display = 'none';
+        }
+
         async function addInvestment(e) {
             e.preventDefault();
             const id = document.getElementById('investmentId').value;
@@ -3415,15 +3683,16 @@
             const inv = investments.find(i => i.id == id);
             if (!inv) return;
 
+            document.getElementById('investmentModalTitle').textContent = 'Edit Investment';
             document.getElementById('investmentId').value = inv.id;
             document.getElementById('investmentName').value = inv.name;
             document.getElementById('investmentType').value = inv.type;
             document.getElementById('investmentAmount').value = inv.amount_invested;
             document.getElementById('investmentValue').value = inv.current_value || '';
             document.getElementById('investmentNotes').value = inv.notes || '';
-
-            document.getElementById('investmentModal').querySelector('.modal-title').textContent = 'Edit Investment';
-            openModal('investment');
+            document.getElementById('investmentSaveBtn').style.display = 'none';
+            document.getElementById('investmentUpdateBtn').style.display = 'inline-flex';
+            document.getElementById('investmentModal').classList.add('active');
         }
 
         async function deleteInvestment(id) {
@@ -3443,6 +3712,20 @@
                 console.error('❌ Delete investment error:', error);
                 showNotification('Failed to delete investment: ' + error.message, 'error');
             }
+        }
+
+        function resetLiabilityModal() {
+            document.getElementById('liabilityModalTitle').textContent = 'Add Liability';
+            document.getElementById('liabilityId').value = '';
+            document.getElementById('liabilityLender').value = '';
+            document.getElementById('liabilityAmount').value = '';
+            document.getElementById('liabilityOutstanding').value = '';
+            document.getElementById('liabilityInterest').value = '';
+            document.getElementById('liabilityPayment').value = '';
+            document.getElementById('liabilityDueDate').value = '';
+            document.getElementById('liabilityNotes').value = '';
+            document.getElementById('liabilitySaveBtn').style.display = 'inline-flex';
+            document.getElementById('liabilityUpdateBtn').style.display = 'none';
         }
 
         function renderLiabilities() {
@@ -3539,6 +3822,7 @@
             const lib = liabilities.find(l => l.id == id);
             if (!lib) return;
 
+            document.getElementById('liabilityModalTitle').textContent = 'Edit Liability';
             document.getElementById('liabilityId').value = lib.id;
             document.getElementById('liabilityLender').value = lib.lender;
             document.getElementById('liabilityAmount').value = lib.amount;
@@ -3547,9 +3831,9 @@
             document.getElementById('liabilityPayment').value = lib.monthly_payment || '';
             document.getElementById('liabilityDueDate').value = lib.due_date ? lib.due_date.split('T')[0] : '';
             document.getElementById('liabilityNotes').value = lib.notes || '';
-
-            document.getElementById('liabilityModal').querySelector('.modal-title').textContent = 'Edit Liability';
-            openModal('liability');
+            document.getElementById('liabilitySaveBtn').style.display = 'none';
+            document.getElementById('liabilityUpdateBtn').style.display = 'inline-flex';
+            document.getElementById('liabilityModal').classList.add('active');
         }
 
         async function deleteLiability(id) {
@@ -4004,21 +4288,9 @@
                     document.getElementById('transactionUpdateBtn').style.display = 'inline-flex';
                 }
             } else if (type === 'investment') {
-                document.getElementById('investmentModal').querySelector('.modal-title').textContent = 'Add Investment';
-                document.getElementById('investmentName').value = '';
-                document.getElementById('investmentType').value = '';
-                document.getElementById('investmentAmount').value = '';
-                document.getElementById('investmentValue').value = '';
-                document.getElementById('investmentNotes').value = '';
+                resetInvestmentModal();
             } else if (type === 'liability') {
-                document.getElementById('liabilityModal').querySelector('.modal-title').textContent = 'Add Liability';
-                document.getElementById('liabilityLender').value = '';
-                document.getElementById('liabilityAmount').value = '';
-                document.getElementById('liabilityOutstanding').value = '';
-                document.getElementById('liabilityInterest').value = '';
-                document.getElementById('liabilityPayment').value = '';
-                document.getElementById('liabilityDueDate').value = '';
-                document.getElementById('liabilityNotes').value = '';
+                resetLiabilityModal();
             } else if (type === 'goal') {
                 document.getElementById('goalModal').querySelector('.modal-title').textContent = 'Add Savings Goal';
                 document.getElementById('goalId').value = '';
@@ -4033,18 +4305,14 @@
                 document.getElementById('budgetAmount').value = '';
                 document.getElementById('budgetSubmitBtn').textContent = 'Add Budget';
             } else if (type === 'asset') {
-                document.getElementById('assetModalTitle').textContent = 'Add Asset';
-                document.getElementById('assetId').value = '';
-                document.getElementById('assetName').value = '';
-                document.getElementById('assetType').value = '';
-                document.getElementById('assetValue').value = '';
-                document.getElementById('assetDescription').value = '';
-                document.getElementById('assetSaveBtn').style.display = 'inline-flex';
-                document.getElementById('assetUpdateBtn').style.display = 'none';
+                resetAssetModal();
             } else if (type === 'document') {
                 document.getElementById('documentModalTitle').textContent = 'Upload Document';
                 document.getElementById('documentTitle').value = '';
+                document.getElementById('documentFolder').value = '';
+                document.getElementById('documentSubfolder').value = '';
                 document.getElementById('documentFile').value = null;
+                updateDocumentFolderOptions();
             }
             document.getElementById(type + 'Modal').classList.add('active');
         }
@@ -4059,9 +4327,9 @@
                 document.getElementById('transactionCategoryCustom').value = '';
                 document.getElementById('transactionCategoryCustomGroup').style.display = 'none';
             } else if (type === 'investment') {
-                document.getElementById('investmentNotes').value = '';
+                resetInvestmentModal();
             } else if (type === 'liability') {
-                document.getElementById('liabilityNotes').value = '';
+                resetLiabilityModal();
             } else if (type === 'goal') {
                 document.getElementById('goalId').value = '';
                 document.getElementById('goalName').value = '';
@@ -4073,6 +4341,8 @@
                 document.getElementById('budgetCategoryCustom').value = '';
                 document.getElementById('budgetCategoryCustomGroup').style.display = 'none';
                 document.getElementById('budgetAmount').value = '';
+            } else if (type === 'asset') {
+                resetAssetModal();
             }
         }
 
@@ -4673,6 +4943,7 @@
         async function init() {
             console.log('FinApp init start');
             try {
+                applyTheme(getPreferredTheme());
                 await checkBackendHealth();
 
                 // Check authentication first

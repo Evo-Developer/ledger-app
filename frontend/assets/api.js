@@ -322,6 +322,60 @@ class API {
         });
     }
 
+    // Assets
+    async getAssets() {
+        return this.request('/assets');
+    }
+
+    async createAsset(asset) {
+        return this.request('/assets', {
+            method: 'POST',
+            body: JSON.stringify(asset),
+        });
+    }
+
+    async updateAsset(id, asset) {
+        return this.request(`/assets/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(asset),
+        });
+    }
+
+    async deleteAsset(id) {
+        return this.request(`/assets/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
+    // Documents
+    async getDocuments() {
+        return this.request('/documents');
+    }
+
+    async uploadDocument(title, file, folder = 'General', subfolder = '') {
+        const formData = new FormData();
+        formData.append('title', title);
+        formData.append('folder', folder || 'General');
+        formData.append('subfolder', subfolder || '');
+        formData.append('file', file);
+
+        const headers = { ...this.getHeaders() };
+        delete headers['Content-Type'];
+
+        const { data } = await this.fetchJson('/documents', {
+            method: 'POST',
+            body: formData,
+            headers,
+        });
+        return data;
+    }
+
+    async deleteDocument(id) {
+        return this.request(`/documents/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
     // Integrations
     async getIntegrations() {
         return this.request('/integrations');

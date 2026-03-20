@@ -113,6 +113,8 @@ class Asset(AssetBase):
 # Document Schemas
 class DocumentBase(BaseModel):
     title: str
+    folder: Optional[str] = "General"
+    subfolder: Optional[str] = None
 
 
 class DocumentCreate(DocumentBase):

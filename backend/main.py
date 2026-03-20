@@ -418,6 +418,8 @@ def get_documents(
             id=d.id,
             user_id=d.user_id,
             title=d.title,
+            folder=d.folder or "General",
+            subfolder=d.subfolder,
             file_name=d.file_name,
             content_type=d.content_type,
             uploaded_at=d.uploaded_at,
@@ -429,6 +431,8 @@ def get_documents(
 @app.post("/api/documents", response_model=DocumentSchema)
 def upload_document(
     title: str = Form(...),
+    folder: str = Form("General"),
+    subfolder: str = Form(""),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -441,6 +445,8 @@ def upload_document(
     db_doc = Document(
         user_id=current_user.id,
         title=title,
+        folder=folder.strip() or "General",
+        subfolder=subfolder.strip() or None,
         file_name=file.filename,
         file_path=file_path,
         content_type=file.content_type,
@@ -453,6 +459,8 @@ def upload_document(
         id=db_doc.id,
         user_id=db_doc.user_id,
         title=db_doc.title,
+        folder=db_doc.folder or "General",
+        subfolder=db_doc.subfolder,
         file_name=db_doc.file_name,
         content_type=db_doc.content_type,
         uploaded_at=db_doc.uploaded_at,

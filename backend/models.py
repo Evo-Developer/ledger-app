@@ -78,6 +78,8 @@ class Document(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String(255), nullable=False)
+    folder = Column(String(255), nullable=False, default="General")
+    subfolder = Column(String(255), nullable=True)
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(1024), nullable=False)
     content_type = Column(String(255), nullable=True)
