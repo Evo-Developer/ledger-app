@@ -1508,10 +1508,6 @@
                         📤 Import Full CSV
                         <input type="file" id="fullLedgerCsvUpload" accept=".csv" onchange="handleFullLedgerCsvUpload(event)" style="display: none;" />
                     </label>
-                    <label class="btn btn-secondary" style="margin-bottom:0;">
-                        📁 Upload CSV
-                        <input type="file" id="transactionCsvUpload" accept=".csv" onchange="handleTransactionCsvUpload(event)" style="display: none;" />
-                    </label>
                     <button class="btn" onclick="openModal('transaction')">+ Add Transaction</button>
                 </div>
             </div>
@@ -3817,8 +3813,8 @@
                             <div class="progress-fill" style="width: ${percentage}%; background: ${isOverBudget ? 'var(--danger)' : 'var(--accent)'}"></div>
                         </div>
                         <div style="margin-top: 12px; display: flex; gap: 10px;">
-                            <button class="btn btn-secondary" onclick="editBudget(${budget.id})">✏️ Edit</button>
-                            <button class="btn btn-danger" onclick="deleteBudget(${budget.id})">🗑️ Delete</button>
+                            <button class="icon-btn" onclick="editBudget(${budget.id})" title="Edit">✏️</button>
+                            <button class="icon-btn" onclick="deleteBudget(${budget.id})" title="Delete">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -3937,8 +3933,8 @@
                         </div>
                         <div class="goal-suggestion">${suggestion}</div>
                         <div style="margin-top: 12px; display: flex; gap: 10px;">
-                            <button class="btn btn-secondary" onclick="editGoal(${goal.id})">Edit</button>
-                            <button class="btn btn-danger" onclick="deleteGoal(${goal.id})">Delete</button>
+                            <button class="icon-btn" onclick="editGoal(${goal.id})" title="Edit">✏️</button>
+                            <button class="icon-btn" onclick="deleteGoal(${goal.id})" title="Delete">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -4013,8 +4009,8 @@
                         </div>
                     </div>
                     <div style="margin-top: 12px; display: flex; gap: 10px;">
-                        <button class="btn btn-secondary" onclick="editAsset(${asset.id})">Edit</button>
-                        <button class="btn btn-danger" onclick="deleteAsset(${asset.id})">Delete</button>
+                        <button class="icon-btn" onclick="editAsset(${asset.id})" title="Edit">✏️</button>
+                        <button class="icon-btn" onclick="deleteAsset(${asset.id})" title="Delete">🗑️</button>
                     </div>
                 </div>
             `).join('');
@@ -4169,7 +4165,7 @@
                                             </div>
                                             <div class="goal-progress-text">
                                                 <a class="btn btn-secondary" href="${doc.url}" target="_blank">Download</a>
-                                                <button class="btn btn-danger" onclick="deleteDocument(${doc.id})">Delete</button>
+                                                <button class="icon-btn" onclick="deleteDocument(${doc.id})" title="Delete">🗑️</button>
                                             </div>
                                         </div>
                                     </div>
@@ -4289,8 +4285,8 @@
                         </div>
                         ${inv.notes ? `<p style="margin-top: 10px; color: var(--text-secondary);">${inv.notes}</p>` : ''}
                         <div style="margin-top: 12px; display: flex; gap: 10px;">
-                            <button class="btn btn-secondary" onclick="editInvestment(${inv.id})">Edit</button>
-                            <button class="btn btn-danger" onclick="deleteInvestment(${inv.id})">Delete</button>
+                            <button class="icon-btn" onclick="editInvestment(${inv.id})" title="Edit">✏️</button>
+                            <button class="icon-btn" onclick="deleteInvestment(${inv.id})" title="Delete">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -4440,8 +4436,8 @@
                         ${lib.due_date ? `<p style="margin-top: 10px; color: var(--text-secondary);">Due date: ${new Date(lib.due_date).toLocaleDateString()}</p>` : ''}
                         ${lib.notes ? `<p style="margin-top: 10px; color: var(--text-secondary);">${lib.notes}</p>` : ''}
                         <div style="margin-top: 12px; display: flex; gap: 10px;">
-                            <button class="btn btn-secondary" onclick="editLiability(${lib.id})">Edit</button>
-                            <button class="btn btn-danger" onclick="deleteLiability(${lib.id})">Delete</button>
+                            <button class="icon-btn" onclick="editLiability(${lib.id})" title="Edit">✏️</button>
+                            <button class="icon-btn" onclick="deleteLiability(${lib.id})" title="Delete">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -4926,7 +4922,7 @@
                                 <button class="btn ${user.is_active ? 'btn-secondary' : 'btn-success'}" onclick="toggleUserAccessAction(${user.id}, ${user.is_active ? 'false' : 'true'})">
                                     ${user.is_active ? 'Block' : 'Unblock'}
                                 </button>
-                                <button class="btn btn-danger" onclick="deleteUserAction(${user.id})">Delete</button>
+                                <button class="icon-btn" onclick="deleteUserAction(${user.id})" title="Delete">🗑️</button>
                             </div>
                         </div>
                     </div>
