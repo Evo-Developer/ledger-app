@@ -24,9 +24,9 @@ from models import User, Transaction, Asset, Document, Budget, Goal, Investment,
 from schemas import (
     UserCreate, User as UserSchema, Transaction as TransactionSchema,
     Asset as AssetSchema, AssetCreate, AssetUpdate,
-    Document as DocumentSchema,
+    Document as DocumentSchema, DocumentUpdate,
     TransactionCreate, TransactionUpdate, Budget as BudgetSchema,
-    BudgetCreate, BudgetUpdate, Goal as GoalSchema, GoalCreate, GoalUpdate,
+    BudgetCreate, BudgetUpdate, BudgetWithSpending, Goal as GoalSchema, GoalCreate, GoalUpdate,
     Investment as InvestmentSchema, InvestmentCreate, InvestmentUpdate,
     Liability as LiabilitySchema, LiabilityCreate, LiabilityUpdate,
     Integration as IntegrationSchema, IntegrationCreate, IntegrationUpdate,
@@ -474,9 +474,9 @@ def _send_gmail_message(db: Session, integration: Integration, recipient_email: 
 
 EXPORT_COLUMNS = [
     "section", "id", "name", "type", "description", "value", "amount", "current_value",
-    "category", "date", "notes", "recurring", "spread_over_year", "source", "lender", "outstanding",
-    "interest_rate", "monthly_payment", "due_date", "include_in_balance",
-    "include_in_income", "limit", "target", "current", "metric", "metric_value"
+    "category", "date", "notes", "recurring", "annual_growth_rate", "spread_over_year", "source", "lender", "outstanding",
+    "is_loan", "loan_start_date", "loan_tenure_months", "interest_rate", "opportunity_cost_rate", "monthly_payment", "linked_asset_id", "due_date", "include_in_balance",
+    "include_in_income", "loan_emi_linked", "limit", "period", "start_month", "target", "current", "target_date", "metric", "metric_value"
 ]
 
 
@@ -542,7 +542,9 @@ def _build_export_rows(current_user: User, db: Session):
             "type": inv.type,
             "amount": inv.amount_invested,
             "current_value": inv.current_value if inv.current_value is not None else "",
+            "annual_growth_rate": inv.annual_growth_rate if getattr(inv, "annual_growth_rate", None) is not None else "",
             "notes": inv.notes or "",
+            "recurring": _bool_to_csv(getattr(inv, "monthly_sip", False)),
         })
 
     for lib in liabilities:
@@ -552,8 +554,13 @@ def _build_export_rows(current_user: User, db: Session):
             "lender": lib.lender,
             "amount": lib.amount,
             "outstanding": lib.outstanding,
+            "is_loan": _bool_to_csv(getattr(lib, "is_loan", False)),
+            "loan_start_date": lib.loan_start_date.isoformat() if getattr(lib, "loan_start_date", None) else "",
+            "loan_tenure_months": getattr(lib, "loan_tenure_months", None) if getattr(lib, "loan_tenure_months", None) is not None else "",
             "interest_rate": lib.interest_rate if lib.interest_rate is not None else "",
+            "opportunity_cost_rate": getattr(lib, "opportunity_cost_rate", None) if getattr(lib, "opportunity_cost_rate", None) is not None else "",
             "monthly_payment": lib.monthly_payment if lib.monthly_payment is not None else "",
+            "linked_asset_id": getattr(lib, "linked_asset_id", None) if getattr(lib, "linked_asset_id", None) is not None else "",
             "due_date": lib.due_date.isoformat() if lib.due_date else "",
             "notes": lib.notes or "",
         })
@@ -568,6 +575,7 @@ def _build_export_rows(current_user: User, db: Session):
             "description": asset.description or "",
             "include_in_balance": _bool_to_csv(asset.include_in_balance),
             "include_in_income": _bool_to_csv(getattr(asset, "include_in_income", False)),
+            "loan_emi_linked": _bool_to_csv(getattr(asset, "loan_emi_linked", False)),
         })
 
     for budget in budgets:
@@ -576,6 +584,9 @@ def _build_export_rows(current_user: User, db: Session):
             "id": budget.id,
             "category": budget.category,
             "limit": budget.limit,
+            "period": getattr(budget, 'period', 'monthly') or 'monthly',
+            "recurring": _bool_to_csv(getattr(budget, 'recurring', False)),
+            "start_month": getattr(budget, 'start_month', None) or "",
         })
 
     for goal in goals:
@@ -585,6 +596,7 @@ def _build_export_rows(current_user: User, db: Session):
             "name": goal.name,
             "target": goal.target,
             "current": goal.current,
+            "target_date": goal.target_date.isoformat() if goal.target_date else "",
         })
 
     summary_rows = [
@@ -1132,6 +1144,8 @@ def import_all_data_csv(
                 "type": row.get("type") or "",
                 "amount_invested": _csv_to_float(row.get("amount")),
                 "current_value": _csv_to_float(row.get("current_value"), None) if row.get("current_value") not in ("", None) else None,
+                "annual_growth_rate": _csv_to_float(row.get("annual_growth_rate"), None) if row.get("annual_growth_rate") not in ("", None) else None,
+                "monthly_sip": _csv_to_bool(row.get("recurring")),
                 "notes": row.get("notes") or None,
             }
             if row_id:
@@ -1152,8 +1166,13 @@ def import_all_data_csv(
                 "lender": row.get("lender") or "",
                 "amount": _csv_to_float(row.get("amount")),
                 "outstanding": _csv_to_float(row.get("outstanding")),
+                "is_loan": _csv_to_bool(row.get("is_loan")),
+                "loan_start_date": _csv_to_datetime(row.get("loan_start_date")) if row.get("loan_start_date") else None,
+                "loan_tenure_months": int(row.get("loan_tenure_months")) if row.get("loan_tenure_months") not in ("", None) else None,
                 "interest_rate": _csv_to_float(row.get("interest_rate"), None) if row.get("interest_rate") not in ("", None) else None,
+                "opportunity_cost_rate": _csv_to_float(row.get("opportunity_cost_rate"), None) if row.get("opportunity_cost_rate") not in ("", None) else None,
                 "monthly_payment": _csv_to_float(row.get("monthly_payment"), None) if row.get("monthly_payment") not in ("", None) else None,
+                "linked_asset_id": int(row.get("linked_asset_id")) if row.get("linked_asset_id") not in ("", None) else None,
                 "due_date": _csv_to_datetime(row.get("due_date")) if row.get("due_date") else None,
                 "notes": row.get("notes") or None,
             }
@@ -1178,6 +1197,7 @@ def import_all_data_csv(
                 "description": row.get("description") or None,
                 "include_in_balance": _csv_to_bool(row.get("include_in_balance")),
                 "include_in_income": _csv_to_bool(row.get("include_in_income")),
+                "loan_emi_linked": _csv_to_bool(row.get("loan_emi_linked")),
             }
             if row_id:
                 existing = db.query(Asset).filter(Asset.user_id == current_user.id, Asset.id == row_id).first()
@@ -1196,7 +1216,14 @@ def import_all_data_csv(
             payload = {
                 "category": row.get("category") or "Other",
                 "limit": _csv_to_float(row.get("limit")),
+                "period": row.get("period", "monthly").strip().lower() if row.get("period") else "monthly",
+                "recurring": _csv_to_bool(row.get("recurring")),
+                "start_month": row.get("start_month") or None,
             }
+            # Validate period
+            if payload["period"] not in ("monthly", "yearly"):
+                payload["period"] = "monthly"
+            
             if row_id:
                 existing = db.query(Budget).filter(Budget.user_id == current_user.id, Budget.id == row_id).first()
                 if existing:
@@ -1215,6 +1242,7 @@ def import_all_data_csv(
                 "name": row.get("name") or "",
                 "target": _csv_to_float(row.get("target")),
                 "current": _csv_to_float(row.get("current")),
+                "target_date": _csv_to_datetime(row.get("target_date")) if row.get("target_date") else None,
             }
             if row_id:
                 existing = db.query(Goal).filter(Goal.user_id == current_user.id, Goal.id == row_id).first()
@@ -1380,6 +1408,48 @@ def upload_document(
     )
 
 
+@app.put("/api/documents/{document_id}", response_model=DocumentSchema)
+def update_document(
+    document_id: int,
+    document_update: DocumentUpdate,
+    current_user: User = Depends(require_write_access),
+    db: Session = Depends(get_db)
+):
+    db_doc = db.query(Document).filter(Document.id == document_id, Document.user_id == current_user.id).first()
+    if not db_doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    update_data = document_update.model_dump(exclude_unset=True)
+
+    if "title" in update_data:
+        title = (update_data.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Document title is required")
+        db_doc.title = title
+
+    if "folder" in update_data:
+        db_doc.folder = (update_data.get("folder") or "").strip() or "General"
+
+    if "subfolder" in update_data:
+        subfolder = update_data.get("subfolder")
+        db_doc.subfolder = subfolder.strip() if isinstance(subfolder, str) and subfolder.strip() else None
+
+    db.commit()
+    db.refresh(db_doc)
+
+    return DocumentSchema(
+        id=db_doc.id,
+        user_id=db_doc.user_id,
+        title=db_doc.title,
+        folder=db_doc.folder or "General",
+        subfolder=db_doc.subfolder,
+        file_name=db_doc.file_name,
+        content_type=db_doc.content_type,
+        uploaded_at=db_doc.uploaded_at,
+        url=f"/uploads/{os.path.basename(db_doc.file_path)}"
+    )
+
+
 @app.delete("/api/documents/{document_id}")
 def delete_document(
     document_id: int,
@@ -1449,7 +1519,10 @@ def create_budget(
     db: Session = Depends(get_db)
 ):
     """Create a new budget"""
-    db_budget = Budget(**budget.dict(), user_id=current_user.id)
+    payload = budget.dict()
+    if not payload.get("start_month"):
+        payload["start_month"] = datetime.utcnow().strftime("%Y-%m")
+    db_budget = Budget(**payload, user_id=current_user.id)
     db.add(db_budget)
     db.commit()
     db.refresh(db_budget)
@@ -1517,6 +1590,61 @@ def delete_budget(
               user_agent=request.headers.get("user-agent"))
 
     return db_budget
+
+
+@app.get("/api/budgets/spending/monthly", response_model=List[BudgetWithSpending])
+def get_budgets_with_spending(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all budgets with current month/year spending details based on budget period"""
+    now = datetime.utcnow()
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    budgets = db.query(Budget).filter(Budget.user_id == current_user.id).all()
+    
+    budgets_with_spending = []
+    for budget in budgets:
+        # Determine period for spending calculation
+        period = getattr(budget, 'period', 'monthly') or 'monthly'
+        
+        if period == 'yearly':
+            # Calculate yearly spending (from Jan 1 to now)
+            start_date = start_of_year
+        else:
+            # Calculate monthly spending (from 1st of month to now)
+            start_date = start_of_month
+        
+        # Calculate spending for this category in the specified period
+        category_spending = db.query(Transaction).filter(
+            Transaction.user_id == current_user.id,
+            Transaction.type == "expense",
+            Transaction.category == budget.category,
+            Transaction.date >= start_date
+        ).all()
+        
+        spent = sum(t.amount for t in category_spending)
+        remaining = budget.limit - spent
+        percentage_used = (spent / budget.limit * 100) if budget.limit > 0 else 0
+        is_over_budget = spent > budget.limit
+        
+        budget_with_spending = BudgetWithSpending(
+            id=budget.id,
+            user_id=budget.user_id,
+            category=budget.category,
+            limit=budget.limit,
+            period=period,
+            spent=round(spent, 2),
+            remaining=round(remaining, 2),
+            percentage_used=round(percentage_used, 1),
+            is_over_budget=is_over_budget,
+            created_at=budget.created_at,
+            updated_at=budget.updated_at
+        )
+        budgets_with_spending.append(budget_with_spending)
+    
+    return budgets_with_spending
 
 
 # ==================== Goal Endpoints ====================
@@ -1628,7 +1756,12 @@ def create_investment(
     db: Session = Depends(get_db)
 ):
     """Create a new investment record"""
-    db_investment = Investment(**investment.dict(), user_id=current_user.id)
+    payload = investment.dict()
+    investment_type = (payload.get("type") or "").strip().lower()
+    if "mutual fund" in investment_type and payload.get("current_value") is None:
+        payload["current_value"] = payload.get("amount_invested")
+
+    db_investment = Investment(**payload, user_id=current_user.id)
     db.add(db_investment)
     db.commit()
     db.refresh(db_investment)
@@ -1658,7 +1791,12 @@ def update_investment(
     if not db_investment:
         raise HTTPException(status_code=404, detail="Investment not found")
 
-    for field, value in investment_update.dict(exclude_unset=True).items():
+    update_data = investment_update.dict(exclude_unset=True)
+    effective_type = (update_data.get("type") or db_investment.type or "").strip().lower()
+    if "mutual fund" in effective_type and update_data.get("current_value") is None:
+        update_data["current_value"] = update_data.get("amount_invested", db_investment.amount_invested)
+
+    for field, value in update_data.items():
         setattr(db_investment, field, value)
 
     db.commit()
@@ -2018,6 +2156,60 @@ def get_dashboard_stats(
     budget_count = db.query(Budget).filter(Budget.user_id == current_user.id).count()
     goal_count = db.query(Goal).filter(Goal.user_id == current_user.id).count()
     
+    # Calculate budget spending
+    budgets = db.query(Budget).filter(Budget.user_id == current_user.id).all()
+    
+    start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    budgets_with_spending_list = []
+    total_budget_limit = 0.0
+    total_budget_spent = 0.0
+    budgets_over_limit = 0
+    
+    for budget in budgets:
+        # Determine period for spending calculation
+        period = getattr(budget, 'period', 'monthly') or 'monthly'
+        
+        if period == 'yearly':
+            start_date = start_of_year
+        else:
+            start_date = start_of_month
+        
+        # Calculate spending for this category in the specified period
+        category_spending = db.query(Transaction).filter(
+            Transaction.user_id == current_user.id,
+            Transaction.type == "expense",
+            Transaction.category == budget.category,
+            Transaction.date >= start_date
+        ).all()
+        
+        spent = sum(t.amount for t in category_spending)
+        remaining = budget.limit - spent
+        percentage_used = (spent / budget.limit * 100) if budget.limit > 0 else 0
+        is_over_budget = spent > budget.limit
+        
+        budget_with_spending = BudgetWithSpending(
+            id=budget.id,
+            user_id=budget.user_id,
+            category=budget.category,
+            limit=budget.limit,
+            period=period,
+            spent=round(spent, 2),
+            remaining=round(remaining, 2),
+            percentage_used=round(percentage_used, 1),
+            is_over_budget=is_over_budget,
+            created_at=budget.created_at,
+            updated_at=budget.updated_at
+        )
+        budgets_with_spending_list.append(budget_with_spending)
+        
+        total_budget_limit += budget.limit
+        total_budget_spent += spent
+        if is_over_budget:
+            budgets_over_limit += 1
+    
+    budget_remaining = total_budget_limit - total_budget_spent
+    
     return DashboardStats(
         total_balance=balance,
         total_income=income,
@@ -2025,7 +2217,12 @@ def get_dashboard_stats(
         savings_rate=round(savings_rate, 1),
         transaction_count=len(transactions),
         budget_count=budget_count,
-        goal_count=goal_count
+        goal_count=goal_count,
+        budgets_with_spending=budgets_with_spending_list,
+        total_budget_limit=round(total_budget_limit, 2),
+        total_budget_spent=round(total_budget_spent, 2),
+        budget_remaining=round(budget_remaining, 2),
+        budgets_over_limit=budgets_over_limit
     )
 
 

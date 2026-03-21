@@ -247,6 +247,10 @@ class API {
         });
     }
 
+    async getBudgetsWithSpending() {
+        return this.request('/budgets/spending/monthly');
+    }
+
     // Goals
     async getGoals() {
         return this.request('/goals');

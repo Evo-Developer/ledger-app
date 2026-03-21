@@ -222,6 +222,95 @@ def ensure_asset_income_column():
             print(f"[database] Warning: could not ensure include_in_income column in assets: {e}")
 
 
+def ensure_asset_emergency_fund_column():
+    """Ensure emergency_fund column exists on assets table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(assets)')).fetchall()]
+                if 'emergency_fund' not in columns:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN emergency_fund BOOLEAN DEFAULT 0'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM assets LIKE 'emergency_fund'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN emergency_fund BOOLEAN NOT NULL DEFAULT FALSE'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='assets' AND column_name='emergency_fund'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN emergency_fund BOOLEAN NOT NULL DEFAULT FALSE'))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure emergency_fund column in assets: {e}")
+
+
+def ensure_asset_loan_emi_linked_column():
+    """Ensure loan_emi_linked column exists on assets table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(assets)')).fetchall()]
+                if 'loan_emi_linked' not in columns:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN loan_emi_linked BOOLEAN DEFAULT 0'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM assets LIKE 'loan_emi_linked'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN loan_emi_linked BOOLEAN NOT NULL DEFAULT FALSE'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='assets' AND column_name='loan_emi_linked'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE assets ADD COLUMN loan_emi_linked BOOLEAN NOT NULL DEFAULT FALSE'))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure loan_emi_linked column in assets: {e}")
+
+
+def ensure_liability_loan_columns():
+    """Ensure loan metadata columns exist on liabilities table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(liabilities)')).fetchall()]
+                if 'is_loan' not in columns:
+                    conn.execute(text('ALTER TABLE liabilities ADD COLUMN is_loan BOOLEAN DEFAULT 0'))
+                if 'loan_start_date' not in columns:
+                    conn.execute(text('ALTER TABLE liabilities ADD COLUMN loan_start_date DATETIME'))
+                if 'loan_tenure_months' not in columns:
+                    conn.execute(text('ALTER TABLE liabilities ADD COLUMN loan_tenure_months INTEGER'))
+                if 'opportunity_cost_rate' not in columns:
+                    conn.execute(text('ALTER TABLE liabilities ADD COLUMN opportunity_cost_rate FLOAT'))
+                if 'linked_asset_id' not in columns:
+                    conn.execute(text('ALTER TABLE liabilities ADD COLUMN linked_asset_id INTEGER'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                for column_name, ddl in [
+                    ('is_loan', 'ALTER TABLE liabilities ADD COLUMN is_loan BOOLEAN NOT NULL DEFAULT FALSE'),
+                    ('loan_start_date', 'ALTER TABLE liabilities ADD COLUMN loan_start_date DATETIME NULL'),
+                    ('loan_tenure_months', 'ALTER TABLE liabilities ADD COLUMN loan_tenure_months INTEGER NULL'),
+                    ('opportunity_cost_rate', 'ALTER TABLE liabilities ADD COLUMN opportunity_cost_rate DOUBLE NULL'),
+                    ('linked_asset_id', 'ALTER TABLE liabilities ADD COLUMN linked_asset_id INTEGER NULL'),
+                ]:
+                    exists = conn.execute(text(f"SHOW COLUMNS FROM liabilities LIKE '{column_name}'")).fetchone()
+                    if not exists:
+                        conn.execute(text(ddl))
+            elif engine.dialect.name == 'postgresql':
+                for column_name, ddl in [
+                    ('is_loan', 'ALTER TABLE liabilities ADD COLUMN is_loan BOOLEAN NOT NULL DEFAULT FALSE'),
+                    ('loan_start_date', 'ALTER TABLE liabilities ADD COLUMN loan_start_date TIMESTAMP'),
+                    ('loan_tenure_months', 'ALTER TABLE liabilities ADD COLUMN loan_tenure_months INTEGER'),
+                    ('opportunity_cost_rate', 'ALTER TABLE liabilities ADD COLUMN opportunity_cost_rate DOUBLE PRECISION'),
+                    ('linked_asset_id', 'ALTER TABLE liabilities ADD COLUMN linked_asset_id INTEGER'),
+                ]:
+                    exists = conn.execute(text(f"SELECT column_name FROM information_schema.columns WHERE table_name='liabilities' AND column_name='{column_name}'")).fetchone()
+                    if not exists:
+                        conn.execute(text(ddl))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure loan columns in liabilities: {e}")
+
+
 def ensure_integration_oauth_columns():
     """Ensure OAuth support columns exist on integrations table."""
     from sqlalchemy import text
@@ -252,6 +341,144 @@ def ensure_integration_oauth_columns():
             print(f"[database] Warning: could not ensure OAuth columns in integrations: {e}")
 
 
+def ensure_investment_monthly_sip_column():
+    """Ensure monthly_sip column exists on investments table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(investments)')).fetchall()]
+                if 'monthly_sip' not in columns:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN monthly_sip BOOLEAN DEFAULT 0'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM investments LIKE 'monthly_sip'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN monthly_sip BOOLEAN NOT NULL DEFAULT FALSE'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='investments' AND column_name='monthly_sip'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN monthly_sip BOOLEAN NOT NULL DEFAULT FALSE'))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure monthly_sip column in investments: {e}")
+            conn.commit()
+
+
+def ensure_investment_annual_growth_rate_column():
+    """Ensure annual_growth_rate column exists on investments table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(investments)')).fetchall()]
+                if 'annual_growth_rate' not in columns:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN annual_growth_rate FLOAT'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM investments LIKE 'annual_growth_rate'")) .fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN annual_growth_rate DOUBLE NULL'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='investments' AND column_name='annual_growth_rate'")) .fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN annual_growth_rate DOUBLE PRECISION'))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure annual_growth_rate column in investments: {e}")
+
+
+def ensure_budget_period_column():
+    """Ensure period column exists on budgets table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(budgets)')).fetchall()]
+                if 'period' not in columns:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN period VARCHAR(20) DEFAULT 'monthly'"))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM budgets LIKE 'period'")).fetchone()
+                if not exists:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN period VARCHAR(20) NOT NULL DEFAULT 'monthly'"))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='budgets' AND column_name='period'")).fetchone()
+                if not exists:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN period VARCHAR(20) NOT NULL DEFAULT 'monthly'"))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure period column in budgets: {e}")
+
+
+def ensure_budget_recurring_column():
+    """Ensure recurring column exists on budgets table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(budgets)')).fetchall()]
+                if 'recurring' not in columns:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN recurring BOOLEAN DEFAULT 0"))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM budgets LIKE 'recurring'")).fetchone()
+                if not exists:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN recurring BOOLEAN NOT NULL DEFAULT FALSE"))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='budgets' AND column_name='recurring'"))
+                exists = exists.fetchone()
+                if not exists:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN recurring BOOLEAN NOT NULL DEFAULT FALSE"))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure recurring column in budgets: {e}")
+
+
+def ensure_goal_target_date_column():
+    """Ensure target_date column exists on goals table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(goals)')).fetchall()]
+                if 'target_date' not in columns:
+                    conn.execute(text('ALTER TABLE goals ADD COLUMN target_date DATE'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM goals LIKE 'target_date'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE goals ADD COLUMN target_date DATE'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='goals' AND column_name='target_date'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE goals ADD COLUMN target_date DATE'))
+        except Exception as e:
+            print(f"[database] Warning: could not ensure target_date column in goals: {e}")
+
+
+def ensure_budget_start_month_column():
+    """Ensure start_month column exists on budgets table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(budgets)')).fetchall()]
+                if 'start_month' not in columns:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN start_month VARCHAR(7)"))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM budgets LIKE 'start_month'")).fetchone()
+                if not exists:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN start_month VARCHAR(7) NULL"))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='budgets' AND column_name='start_month'")).fetchone()
+                if not exists:
+                    conn.execute(text("ALTER TABLE budgets ADD COLUMN start_month VARCHAR(7)"))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure start_month column in budgets: {e}")
+
+
 def init_db():
     """Initialize database tables"""
     from models import Base
@@ -260,7 +487,16 @@ def init_db():
     ensure_bootstrap_admin()
     ensure_asset_balance_column()
     ensure_asset_income_column()
+    ensure_asset_emergency_fund_column()
+    ensure_asset_loan_emi_linked_column()
+    ensure_liability_loan_columns()
     ensure_integration_oauth_columns()
+    ensure_investment_monthly_sip_column()
+    ensure_investment_annual_growth_rate_column()
     ensure_transaction_recurring_column()
+    ensure_budget_period_column()
+    ensure_budget_recurring_column()
+    ensure_budget_start_month_column()
     ensure_transaction_spread_over_year_column()
     ensure_document_folder_columns()
+    ensure_goal_target_date_column()

@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Enum
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Enum, Date
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, date
 import enum
 
 Base = declarative_base()
@@ -75,6 +75,8 @@ class Asset(Base):
     value = Column(Float, nullable=False, default=0.0)
     include_in_balance = Column(Boolean, nullable=False, default=False)
     include_in_income = Column(Boolean, nullable=False, default=False)
+    emergency_fund = Column(Boolean, nullable=False, default=False)
+    loan_emi_linked = Column(Boolean, nullable=False, default=False)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -105,6 +107,9 @@ class Budget(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     category = Column(String(100), nullable=False)
     limit = Column(Float, nullable=False)
+    period = Column(String(20), default="monthly", nullable=False)  # 'monthly' or 'yearly'
+    recurring = Column(Boolean, nullable=False, default=False)
+    start_month = Column(String(7), nullable=True)  # YYYY-MM
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -120,6 +125,7 @@ class Goal(Base):
     name = Column(String(255), nullable=False)
     target = Column(Float, nullable=False)
     current = Column(Float, default=0.0)
+    target_date = Column(Date, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -136,6 +142,8 @@ class Investment(Base):
     type = Column(String(100), nullable=False)
     amount_invested = Column(Float, nullable=False)
     current_value = Column(Float, nullable=True)
+    annual_growth_rate = Column(Float, nullable=True)
+    monthly_sip = Column(Boolean, nullable=False, default=False)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -152,8 +160,13 @@ class Liability(Base):
     lender = Column(String(255), nullable=False)
     amount = Column(Float, nullable=False)
     outstanding = Column(Float, nullable=False)
+    is_loan = Column(Boolean, nullable=False, default=False)
+    loan_start_date = Column(DateTime, nullable=True)
+    loan_tenure_months = Column(Integer, nullable=True)
     interest_rate = Column(Float, nullable=True)
+    opportunity_cost_rate = Column(Float, nullable=True)
     monthly_payment = Column(Float, nullable=True)
+    linked_asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)
     due_date = Column(DateTime, nullable=True)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)

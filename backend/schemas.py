@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum
 
 
@@ -98,6 +98,8 @@ class AssetBase(BaseModel):
     value: float
     include_in_balance: bool = False
     include_in_income: bool = False
+    emergency_fund: bool = False
+    loan_emi_linked: bool = False
     description: Optional[str] = None
 
 
@@ -111,6 +113,8 @@ class AssetUpdate(BaseModel):
     value: Optional[float] = None
     include_in_balance: Optional[bool] = None
     include_in_income: Optional[bool] = None
+    emergency_fund: Optional[bool] = None
+    loan_emi_linked: Optional[bool] = None
     description: Optional[str] = None
 
 
@@ -135,6 +139,12 @@ class DocumentCreate(DocumentBase):
     pass
 
 
+class DocumentUpdate(BaseModel):
+    title: Optional[str] = None
+    folder: Optional[str] = None
+    subfolder: Optional[str] = None
+
+
 class Document(DocumentBase):
     id: int
     user_id: int
@@ -151,6 +161,9 @@ class Document(DocumentBase):
 class BudgetBase(BaseModel):
     category: str
     limit: float
+    period: str = "monthly"  # 'monthly' or 'yearly'
+    recurring: bool = False
+    start_month: Optional[str] = None
 
 
 class BudgetCreate(BudgetBase):
@@ -160,6 +173,9 @@ class BudgetCreate(BudgetBase):
 class BudgetUpdate(BaseModel):
     category: Optional[str] = None
     limit: Optional[float] = None
+    period: Optional[str] = None
+    recurring: Optional[bool] = None
+    start_month: Optional[str] = None
 
 
 class Budget(BudgetBase):
@@ -172,11 +188,27 @@ class Budget(BudgetBase):
         from_attributes = True
 
 
+# Budget with Spending Schema (for monthly tracking)
+class BudgetWithSpending(BudgetBase):
+    id: int
+    user_id: int
+    spent: float
+    remaining: float
+    percentage_used: float
+    is_over_budget: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Goal Schemas
 class GoalBase(BaseModel):
     name: str
     target: float
     current: float = 0.0
+    target_date: Optional[date] = None
 
 
 class GoalCreate(GoalBase):
@@ -187,6 +219,7 @@ class GoalUpdate(BaseModel):
     name: Optional[str] = None
     target: Optional[float] = None
     current: Optional[float] = None
+    target_date: Optional[date] = None
 
 
 class Goal(GoalBase):
@@ -205,6 +238,8 @@ class InvestmentBase(BaseModel):
     type: str
     amount_invested: float
     current_value: Optional[float] = None
+    annual_growth_rate: Optional[float] = None
+    monthly_sip: bool = False
     notes: Optional[str] = None
 
 
@@ -217,6 +252,8 @@ class InvestmentUpdate(BaseModel):
     type: Optional[str] = None
     amount_invested: Optional[float] = None
     current_value: Optional[float] = None
+    annual_growth_rate: Optional[float] = None
+    monthly_sip: Optional[bool] = None
     notes: Optional[str] = None
 
 
@@ -235,8 +272,13 @@ class LiabilityBase(BaseModel):
     lender: str
     amount: float
     outstanding: float
+    is_loan: bool = False
+    loan_start_date: Optional[datetime] = None
+    loan_tenure_months: Optional[int] = None
     interest_rate: Optional[float] = None
+    opportunity_cost_rate: Optional[float] = None
     monthly_payment: Optional[float] = None
+    linked_asset_id: Optional[int] = None
     due_date: Optional[datetime] = None
     notes: Optional[str] = None
 
@@ -249,8 +291,13 @@ class LiabilityUpdate(BaseModel):
     lender: Optional[str] = None
     amount: Optional[float] = None
     outstanding: Optional[float] = None
+    is_loan: Optional[bool] = None
+    loan_start_date: Optional[datetime] = None
+    loan_tenure_months: Optional[int] = None
     interest_rate: Optional[float] = None
+    opportunity_cost_rate: Optional[float] = None
     monthly_payment: Optional[float] = None
+    linked_asset_id: Optional[int] = None
     due_date: Optional[datetime] = None
     notes: Optional[str] = None
 
@@ -371,6 +418,11 @@ class DashboardStats(BaseModel):
     transaction_count: int
     budget_count: int
     goal_count: int
+    budgets_with_spending: Optional[List['BudgetWithSpending']] = None
+    total_budget_limit: float = 0.0
+    total_budget_spent: float = 0.0
+    budget_remaining: float = 0.0
+    budgets_over_limit: int = 0
 
 
 # Filter Schemas
@@ -390,3 +442,7 @@ class AuditLogFilter(BaseModel):
     to_date: Optional[datetime] = None
     action: Optional[AuditAction] = None
     entity_type: Optional[str] = None
+
+
+# Update forward references for DashboardStats
+DashboardStats.model_rebuild()
