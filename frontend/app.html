@@ -1077,6 +1077,47 @@
             margin-bottom: 20px;
         }
 
+        .tabs-shell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .quick-tabs {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            flex: 1 1 520px;
+        }
+
+        .quick-tab {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
+            color: var(--text-secondary);
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .quick-tab:hover {
+            border-color: var(--accent-light);
+            color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        .quick-tab.active {
+            background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%);
+            border-color: color-mix(in srgb, var(--accent) 45%, var(--border) 55%);
+            color: var(--accent);
+            box-shadow: var(--shadow);
+        }
+
         .tab-menu {
             position: relative;
             width: 100%;
@@ -1130,6 +1171,33 @@
             overflow-y: auto;
             display: none;
             padding: 8px;
+        }
+
+        .tab-menu-search {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--surface);
+            padding-bottom: 8px;
+            margin-bottom: 4px;
+        }
+
+        .tab-menu-search-input {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 14px;
+            font-family: inherit;
+            background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
+            color: var(--text);
+        }
+
+        .tab-menu-search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(15, 111, 255, 0.14);
+            background: var(--surface);
         }
 
         .tab-menu.open .tab-menu-dropdown {
@@ -1267,6 +1335,312 @@
             font-size: 13px;
             color: var(--text-secondary);
             margin-bottom: 16px;
+        }
+
+        .document-dropzone {
+            border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, var(--border) 55%);
+            border-radius: 16px;
+            padding: 20px;
+            background: color-mix(in srgb, var(--surface) 90%, var(--accent) 10%);
+            display: grid;
+            gap: 8px;
+            justify-items: center;
+            text-align: center;
+            margin-bottom: 16px;
+            transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+        }
+
+        .document-dropzone.drag-active {
+            border-color: var(--accent);
+            background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%);
+            box-shadow: var(--shadow-blue);
+            transform: translateY(-2px);
+        }
+
+        .document-dropzone-icon {
+            font-size: 30px;
+            line-height: 1;
+        }
+
+        .document-dropzone-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .document-dropzone-copy {
+            font-size: 13px;
+            color: var(--text-secondary);
+            max-width: 460px;
+        }
+
+        .document-explorer {
+            display: grid;
+            grid-template-columns: 280px minmax(0, 1fr);
+            gap: 18px;
+            min-height: 520px;
+
+        .document-tree-row.is-dragging .document-tree-item.is-folder {
+            opacity: 0.55;
+        }
+
+        .document-tree-row.is-drop-target .document-tree-item.is-folder {
+            background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+            outline: 2px dashed color-mix(in srgb, var(--accent) 70%, var(--border) 30%);
+            outline-offset: 2px;
+        }
+        }
+
+        .document-sidebar,
+        .document-pane {
+            background: color-mix(in srgb, var(--surface) 96%, transparent);
+            border: 1px solid color-mix(in srgb, var(--border) 88%, #ffffff 12%);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+        }
+
+        .document-sidebar {
+            padding: 14px;
+            display: grid;
+            gap: 10px;
+            align-content: start;
+        }
+
+        .document-pane {
+            padding: 18px;
+            display: grid;
+            gap: 16px;
+            align-content: start;
+        }
+
+        .document-sidebar-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            font-weight: 700;
+            padding: 2px 6px 8px;
+        }
+
+        .document-tree-item {
+            width: 100%;
+            border: none;
+            background: transparent;
+            border-radius: 12px;
+            padding: 10px 12px;
+            color: var(--text);
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+        }
+
+        .document-tree-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .document-tree-row.is-dragging .document-tree-item.is-folder {
+            opacity: 0.55;
+        }
+
+        .document-tree-row.is-drop-target .document-tree-item.is-folder {
+            background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+            outline: 2px dashed color-mix(in srgb, var(--accent) 70%, var(--border) 30%);
+            outline-offset: 2px;
+        }
+
+        .document-tree-row-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            opacity: 0.75;
+        }
+
+        .document-tree-row:hover .document-tree-row-actions {
+            opacity: 1;
+        }
+
+        .document-tree-row-actions .icon-btn {
+            padding: 6px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--surface) 90%, var(--bg) 10%);
+        }
+
+        .document-tree-item:hover {
+            background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+        }
+
+        .document-tree-item.active {
+            background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%);
+            color: var(--accent-dark);
+        }
+
+        .document-tree-item.is-subfolder {
+            margin-left: 14px;
+            width: calc(100% - 14px);
+            padding-top: 8px;
+            padding-bottom: 8px;
+        }
+
+        .document-tree-item.is-document {
+            margin-left: 28px;
+            width: calc(100% - 28px);
+            padding-top: 7px;
+            padding-bottom: 7px;
+        }
+
+        .document-tree-item.is-folder {
+            margin-left: 8px;
+            width: calc(100% - 8px);
+        }
+
+        .document-tree-empty {
+            margin-left: 42px;
+            padding: 4px 0 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .document-tree-item-main {
+            display: grid;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .document-tree-item-label {
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .document-tree-item-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .document-pane-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .document-pane-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .document-pane-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .document-pane-badge {
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--accent) 10%, var(--surface) 90%);
+            color: var(--accent-dark);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .document-section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .document-subfolder-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .document-subfolder-card {
+            width: 100%;
+            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
+            border-radius: 14px;
+            padding: 14px;
+            text-align: left;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .document-subfolder-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-light);
+            box-shadow: var(--shadow-md);
+        }
+
+        .document-file-list {
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            background: color-mix(in srgb, var(--surface) 98%, transparent);
+        }
+
+        .document-file-row {
+            display: grid;
+            grid-template-columns: minmax(0, 2.2fr) 1fr auto;
+            gap: 14px;
+            align-items: center;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .document-file-row:last-child {
+            border-bottom: none;
+        }
+
+        .document-file-row.header {
+            background: color-mix(in srgb, var(--bg) 88%, var(--surface) 12%);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            font-weight: 700;
+        }
+
+        .document-file-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .document-file-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .document-file-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .document-empty-pane {
+            border: 1px dashed var(--border);
+            border-radius: 16px;
+            padding: 26px 20px;
+            text-align: center;
+            color: var(--text-secondary);
         }
 
         .sync-info {
@@ -1544,6 +1918,24 @@
                 align-items: stretch;
             }
 
+            .tabs-shell {
+                align-items: stretch;
+            }
+
+            .quick-tabs {
+                flex: 1 1 100%;
+            }
+
+            .quick-tab {
+                flex: 1 1 calc(50% - 10px);
+                justify-content: center;
+                text-align: center;
+            }
+
+            .tab-menu {
+                max-width: none;
+            }
+
             .header-meta,
             .header-status-stack {
                 align-items: flex-start;
@@ -1557,6 +1949,21 @@
 
             .grid {
                 grid-template-columns: 1fr;
+            }
+
+            .document-explorer {
+                grid-template-columns: 1fr;
+            }
+
+            .document-file-row,
+            .document-file-row.header {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .document-file-actions {
+                justify-content: flex-start;
+                flex-wrap: wrap;
             }
 
             .section {
@@ -1741,27 +2148,44 @@
 
         <!-- Tabs -->
         <div class="tabs">
-            <div class="tab-menu" id="tabMenu">
-                <button class="tab-menu-button" type="button" onclick="toggleTabMenu()" aria-expanded="false" aria-controls="tabMenuDropdown" id="tabMenuButton">
-                    <span>Navigate: <span id="activeTabLabel">Expenses</span></span>
-                    <span class="tab-menu-caret">▼</span>
-                </button>
-                <div class="tab-menu-dropdown" id="tabMenuDropdown">
-                    <button class="tab-menu-item active" data-tab="expenses" onclick="selectTabFromMenu('expenses', this)">💸 Expenses</button>
-                    <button class="tab-menu-item" data-tab="income" onclick="selectTabFromMenu('income', this)">💰 Income</button>
-                    <button class="tab-menu-item" data-tab="budgets" onclick="selectTabFromMenu('budgets', this)">💰 Budgets</button>
-                    <button class="tab-menu-item" data-tab="goals" onclick="selectTabFromMenu('goals', this)">🎯 Goals</button>
-                    <button class="tab-menu-item" data-tab="savings" onclick="selectTabFromMenu('savings', this)">💧 Savings</button>
-                    <button class="tab-menu-item" data-tab="investments" onclick="selectTabFromMenu('investments', this)">📈 Investments</button>
-                    <button class="tab-menu-item" data-tab="retirement" onclick="selectTabFromMenu('retirement', this)">🧓 Retirement Products</button>
-                    <button class="tab-menu-item" data-tab="insurance" onclick="selectTabFromMenu('insurance', this)">🛡️ Insurances</button>
-                    <button class="tab-menu-item" data-tab="liabilities" onclick="selectTabFromMenu('liabilities', this)">🏦 Liabilities</button>
-                    <button class="tab-menu-item" data-tab="insights" onclick="selectTabFromMenu('insights', this)">🧠 Insights</button>
-                    <button class="tab-menu-item" data-tab="assets" onclick="selectTabFromMenu('assets', this)">🏠 Assets</button>
-                    <button class="tab-menu-item" data-tab="documents" onclick="selectTabFromMenu('documents', this)">📄 Documents</button>
-                    <button class="tab-menu-item" data-tab="integrations" onclick="selectTabFromMenu('integrations', this)">🔗 Integrations</button>
-                    <button class="tab-menu-item" data-tab="users" id="usersTabButton" onclick="selectTabFromMenu('users', this)" style="display: none;">👥 Users</button>
-                    <button class="tab-menu-item" data-tab="audit" onclick="selectTabFromMenu('audit', this)">🛡️ Audit Trail</button>
+            <div class="tabs-shell">
+                <div class="quick-tabs" aria-label="Quick navigation">
+                    <button class="quick-tab active" type="button" data-tab="expenses" onclick="switchTab('expenses', this)">💸 Expenses</button>
+                    <button class="quick-tab" type="button" data-tab="income" onclick="switchTab('income', this)">💰 Income</button>
+                    <button class="quick-tab" type="button" data-tab="savings" onclick="switchTab('savings', this)">💧 Savings</button>
+                    <button class="quick-tab" type="button" data-tab="budgets" onclick="switchTab('budgets', this)">🧾 Budgets</button>
+                </div>
+                <div class="tab-menu" id="tabMenu">
+                    <button class="tab-menu-button" type="button" onclick="toggleTabMenu()" aria-expanded="false" aria-controls="tabMenuDropdown" id="tabMenuButton">
+                        <span>Navigate: <span id="activeTabLabel">Expenses</span></span>
+                        <span class="tab-menu-caret">▼</span>
+                    </button>
+                    <div class="tab-menu-dropdown" id="tabMenuDropdown">
+                        <div class="tab-menu-search">
+                            <input
+                                type="text"
+                                id="tabMenuSearch"
+                                class="tab-menu-search-input"
+                                placeholder="Search sections..."
+                                oninput="applyTabMenuFilter()"
+                            />
+                        </div>
+                        <button class="tab-menu-item active" data-tab="expenses" onclick="selectTabFromMenu('expenses', this)">💸 Expenses</button>
+                        <button class="tab-menu-item" data-tab="income" onclick="selectTabFromMenu('income', this)">💰 Income</button>
+                        <button class="tab-menu-item" data-tab="budgets" onclick="selectTabFromMenu('budgets', this)">💰 Budgets</button>
+                        <button class="tab-menu-item" data-tab="goals" onclick="selectTabFromMenu('goals', this)">🎯 Goals</button>
+                        <button class="tab-menu-item" data-tab="savings" onclick="selectTabFromMenu('savings', this)">💧 Savings</button>
+                        <button class="tab-menu-item" data-tab="investments" onclick="selectTabFromMenu('investments', this)">📈 Investments</button>
+                        <button class="tab-menu-item" data-tab="retirement" onclick="selectTabFromMenu('retirement', this)">🧓 Retirement Products</button>
+                        <button class="tab-menu-item" data-tab="insurance" onclick="selectTabFromMenu('insurance', this)">🛡️ Insurances</button>
+                        <button class="tab-menu-item" data-tab="liabilities" onclick="selectTabFromMenu('liabilities', this)">🏦 Liabilities</button>
+                        <button class="tab-menu-item" data-tab="insights" onclick="selectTabFromMenu('insights', this)">🧠 Insights</button>
+                        <button class="tab-menu-item" data-tab="assets" onclick="selectTabFromMenu('assets', this)">🏠 Assets</button>
+                        <button class="tab-menu-item" data-tab="documents" onclick="selectTabFromMenu('documents', this)">📄 Documents</button>
+                        <button class="tab-menu-item" data-tab="integrations" onclick="selectTabFromMenu('integrations', this)">🔗 Integrations</button>
+                        <button class="tab-menu-item" data-tab="users" id="usersTabButton" onclick="selectTabFromMenu('users', this)" style="display: none;">👥 Users</button>
+                        <button class="tab-menu-item" data-tab="audit" onclick="selectTabFromMenu('audit', this)">🛡️ Audit Trail</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1960,10 +2384,17 @@
         <div id="documents-section" class="section" style="display: none;">
             <div class="section-header">
                 <h2 class="section-title">Documents 📄</h2>
-                <button class="btn" onclick="openModal('document')">+ Upload Document</button>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" type="button" id="documentBackBtn" onclick="navigateDocumentExplorer(null, null)" style="display: none;">← Back</button>
+                    <button class="btn btn-secondary" type="button" onclick="createDocumentFolder()">+ Create Folder</button>
+                    <button class="btn btn-secondary" type="button" id="documentCreateSubfolderBtn" onclick="createDocumentSubfolder()" style="display: none;">+ Create Subfolder</button>
+                    <button class="btn" type="button" id="documentUploadBtn" onclick="openDocumentUploadFromCurrentPath()" style="display: none;">+ Upload Document</button>
+                </div>
             </div>
+            <div id="documentBreadcrumb" style="margin-bottom: 16px;"></div>
             <div id="documentList"></div>
             <div class="list-toggle-row" id="documentListToggle"></div>
+            <input type="file" id="documentDropUploadInput" multiple style="display: none;" onchange="handleDocumentDropInputChange(event)">
         </div>
 
         <!-- Insights Section -->
@@ -2354,20 +2785,17 @@
             </div>
             <form onsubmit="saveDocument(event)">
                 <input type="hidden" id="documentId">
+                <input type="hidden" id="documentFolder">
+                <input type="hidden" id="documentSubfolder">
                 <div class="form-group">
                     <label class="form-label">Title</label>
                     <input type="text" class="form-input" id="documentTitle" required placeholder="Property deed, ID proof" />
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Folder</label>
-                        <input type="text" class="form-input" id="documentFolder" list="documentFolderOptions" placeholder="e.g., Banking, Tax, Property" oninput="updateDocumentFolderOptions()" />
-                        <datalist id="documentFolderOptions"></datalist>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Subfolder</label>
-                        <input type="text" class="form-input" id="documentSubfolder" list="documentSubfolderOptions" placeholder="e.g., 2026, Home Loan, Statements" />
-                        <datalist id="documentSubfolderOptions"></datalist>
+                <div class="form-group">
+                    <label class="form-label">Location</label>
+                    <div class="transaction-modal-options">
+                        <div id="documentLocationDisplay">Select a folder before uploading.</div>
+                        <div class="helper-text">Create folders and subfolders from the Documents section, then upload files inside the current location.</div>
                     </div>
                 </div>
                 <div class="form-group">
@@ -3289,6 +3717,13 @@
         let retirementProducts = [];
         let insurances = [];
         let documents = [];
+        let documentStructure = { folders: {} };
+        let currentDocumentFolder = null;
+        let currentDocumentSubfolder = null;
+        let documentRootExpanded = true;
+        let documentFolderExpandedState = {};
+        let documentSubfolderExpandedState = {};
+        let draggedDocumentFolder = null;
         let users = [];
         let integrations = {};
         let auditLog = [];
@@ -3303,6 +3738,7 @@
         const SAVINGS_PRODUCTS_STORAGE_KEY = 'savings_products_v1';
         const RETIREMENT_PRODUCTS_STORAGE_KEY = 'retirement_products_v1';
         const INSURANCES_STORAGE_KEY = 'insurances_v1';
+        const DOCUMENT_STRUCTURE_STORAGE_KEY = 'document_structure_v1';
         const TAB_LABELS = {
             expenses: 'Expenses',
             income: 'Income',
@@ -3428,6 +3864,9 @@
                         uploadedAt: d.uploaded_at,
                         url: d.url
                     }));
+
+                    documentStructure = loadDocumentStructure();
+                    syncDocumentStructureWithDocuments();
 
                     savingsProducts = loadLocalCollection(SAVINGS_PRODUCTS_STORAGE_KEY);
                     retirementProducts = loadLocalCollection(RETIREMENT_PRODUCTS_STORAGE_KEY);
@@ -6999,12 +7438,851 @@
             }
         }
 
+        function loadDocumentStructure() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(DOCUMENT_STRUCTURE_STORAGE_KEY) || '{"folders":{}}');
+                if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                    return { folders: {} };
+                }
+                if (!parsed.folders || typeof parsed.folders !== 'object' || Array.isArray(parsed.folders)) {
+                    parsed.folders = {};
+                }
+                return parsed;
+            } catch (error) {
+                console.warn('Failed to load document structure metadata:', error);
+                return { folders: {} };
+            }
+        }
+
+        function saveDocumentStructure() {
+            localStorage.setItem(DOCUMENT_STRUCTURE_STORAGE_KEY, JSON.stringify(documentStructure));
+        }
+
+        function normalizeDocumentFolderName(folder) {
+            return (folder || '').trim() || 'General';
+        }
+
+        function normalizeDocumentSubfolderName(subfolder) {
+            return (subfolder || '').trim();
+        }
+
+        function registerDocumentLocation(folder, subfolder = '', shouldPersist = true) {
+            const folderName = normalizeDocumentFolderName(folder);
+            const subfolderName = normalizeDocumentSubfolderName(subfolder);
+
+            if (!documentStructure || typeof documentStructure !== 'object' || Array.isArray(documentStructure)) {
+                documentStructure = { folders: {} };
+            }
+            if (!documentStructure.folders || typeof documentStructure.folders !== 'object' || Array.isArray(documentStructure.folders)) {
+                documentStructure.folders = {};
+            }
+
+            let changed = false;
+            if (!documentStructure.folders[folderName]) {
+                documentStructure.folders[folderName] = { subfolders: [] };
+                changed = true;
+            }
+
+            const subfolders = Array.isArray(documentStructure.folders[folderName].subfolders)
+                ? documentStructure.folders[folderName].subfolders
+                : [];
+
+            if (subfolderName && !subfolders.includes(subfolderName)) {
+                subfolders.push(subfolderName);
+                subfolders.sort((a, b) => a.localeCompare(b));
+                documentStructure.folders[folderName].subfolders = subfolders;
+                changed = true;
+            }
+
+            if (changed && shouldPersist) {
+                saveDocumentStructure();
+            }
+
+            return changed;
+        }
+
+        function syncDocumentStructureWithDocuments() {
+            let changed = false;
+            documents.forEach((doc) => {
+                if (registerDocumentLocation(doc.folder || 'General', doc.subfolder || '', false)) {
+                    changed = true;
+                }
+            });
+
+            if (changed) {
+                saveDocumentStructure();
+            }
+        }
+
+        function getDocumentFolders() {
+            syncDocumentStructureWithDocuments();
+            return Object.keys(documentStructure.folders || {}).sort((a, b) => a.localeCompare(b));
+        }
+
+        function getDocumentSubfolders(folder) {
+            const folderName = normalizeDocumentFolderName(folder);
+            syncDocumentStructureWithDocuments();
+            return Array.isArray(documentStructure.folders?.[folderName]?.subfolders)
+                ? [...documentStructure.folders[folderName].subfolders].sort((a, b) => a.localeCompare(b))
+                : [];
+        }
+
+        function navigateDocumentExplorer(folder = null, subfolder = null) {
+            currentDocumentFolder = folder ? normalizeDocumentFolderName(folder) : null;
+            currentDocumentSubfolder = currentDocumentFolder && subfolder
+                ? normalizeDocumentSubfolderName(subfolder)
+                : null;
+
+            if (currentDocumentFolder) {
+                documentFolderExpandedState[currentDocumentFolder] = true;
+            }
+            if (currentDocumentFolder && currentDocumentSubfolder) {
+                documentSubfolderExpandedState[getDocumentSubfolderKey(currentDocumentFolder, currentDocumentSubfolder)] = true;
+            }
+            renderDocuments();
+        }
+
+        function getDocumentSubfolderKey(folder, subfolder) {
+            return `${normalizeDocumentFolderName(folder)}::${normalizeDocumentSubfolderName(subfolder)}`;
+        }
+
+        function toggleDocumentFolderExpanded(folder) {
+            const folderName = normalizeDocumentFolderName(folder);
+            const current = documentFolderExpandedState[folderName] !== false;
+            documentFolderExpandedState[folderName] = !current;
+            renderDocuments();
+        }
+
+        function toggleDocumentSubfolderExpanded(folder, subfolder) {
+            const subfolderKey = getDocumentSubfolderKey(folder, subfolder);
+            const current = documentSubfolderExpandedState[subfolderKey] !== false;
+            documentSubfolderExpandedState[subfolderKey] = !current;
+            renderDocuments();
+        }
+
+        function toggleDocumentRootExpanded() {
+            documentRootExpanded = !documentRootExpanded;
+            renderDocuments();
+        }
+
+        function createDocumentFolder() {
+            const folderName = normalizeDocumentSubfolderName(prompt('Enter a new folder name:') || '');
+            if (!folderName) return;
+
+            const changed = registerDocumentLocation(folderName);
+            if (!changed) {
+                showNotification('That folder already exists.', 'error');
+                return;
+            }
+
+            documentFolderExpandedState[folderName] = true;
+            currentDocumentFolder = folderName;
+            currentDocumentSubfolder = null;
+            renderDocuments();
+            showNotification('Folder created.', 'success');
+        }
+
+        function createDocumentSubfolder() {
+            if (!currentDocumentFolder) {
+                showNotification('Open a folder first to create a subfolder.', 'error');
+                return;
+            }
+
+            const subfolderName = normalizeDocumentSubfolderName(prompt(`Enter a subfolder name for ${currentDocumentFolder}:`) || '');
+            if (!subfolderName) return;
+
+            const changed = registerDocumentLocation(currentDocumentFolder, subfolderName);
+            if (!changed) {
+                showNotification('That subfolder already exists in this folder.', 'error');
+                return;
+            }
+
+            documentFolderExpandedState[currentDocumentFolder] = true;
+            documentSubfolderExpandedState[getDocumentSubfolderKey(currentDocumentFolder, subfolderName)] = true;
+            currentDocumentSubfolder = subfolderName;
+            renderDocuments();
+            showNotification('Subfolder created.', 'success');
+        }
+
+        async function renameDocumentFolder(folder) {
+            const oldFolder = normalizeDocumentFolderName(folder);
+            const nextFolderRaw = prompt(`Rename folder "${oldFolder}" to:`, oldFolder);
+            if (nextFolderRaw === null) return;
+
+            const nextFolder = normalizeDocumentSubfolderName(nextFolderRaw);
+            if (!nextFolder) {
+                showNotification('Folder name cannot be empty.', 'error');
+                return;
+            }
+
+            if (nextFolder === oldFolder) return;
+
+            if (documentStructure.folders?.[nextFolder]) {
+                showNotification('A folder with that name already exists.', 'error');
+                return;
+            }
+
+            const docsToMove = documents.filter((doc) => normalizeDocumentFolderName(doc.folder) === oldFolder);
+
+            try {
+                for (const doc of docsToMove) {
+                    const updated = await api.request(`/documents/${doc.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            title: doc.title,
+                            folder: nextFolder,
+                            subfolder: doc.subfolder || null
+                        })
+                    });
+
+                    const idx = documents.findIndex((item) => item.id == doc.id);
+                    if (idx !== -1) {
+                        documents[idx] = { ...updated, uploadedAt: updated.uploaded_at, url: updated.url };
+                    }
+                }
+
+                if (documentStructure.folders?.[oldFolder]) {
+                    const existingMeta = documentStructure.folders[oldFolder];
+                    delete documentStructure.folders[oldFolder];
+                    documentStructure.folders[nextFolder] = existingMeta;
+                    saveDocumentStructure();
+                }
+
+                if (Object.prototype.hasOwnProperty.call(documentFolderExpandedState, oldFolder)) {
+                    documentFolderExpandedState[nextFolder] = documentFolderExpandedState[oldFolder];
+                    delete documentFolderExpandedState[oldFolder];
+                }
+
+                Object.keys(documentSubfolderExpandedState)
+                    .filter((key) => key.startsWith(`${oldFolder}::`))
+                    .forEach((key) => {
+                        const renamedKey = `${nextFolder}::${key.split('::').slice(1).join('::')}`;
+                        documentSubfolderExpandedState[renamedKey] = documentSubfolderExpandedState[key];
+                        delete documentSubfolderExpandedState[key];
+                    });
+
+                if (currentDocumentFolder === oldFolder) {
+                    currentDocumentFolder = nextFolder;
+                }
+
+                renderDocuments();
+                showNotification(`Folder renamed to ${nextFolder}.`, 'success');
+            } catch (error) {
+                console.error('❌ Rename folder error:', error);
+                showNotification('Failed to rename folder: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteDocumentFolder(folder) {
+            const targetFolder = normalizeDocumentFolderName(folder);
+            const confirmed = confirm(`Delete folder "${targetFolder}"?\n\nDocuments will be moved to General.`);
+            if (!confirmed) return;
+
+            const docsToMove = documents.filter((doc) => normalizeDocumentFolderName(doc.folder) === targetFolder);
+
+            try {
+                for (const doc of docsToMove) {
+                    const updated = await api.request(`/documents/${doc.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            title: doc.title,
+                            folder: 'General',
+                            subfolder: null
+                        })
+                    });
+
+                    const idx = documents.findIndex((item) => item.id == doc.id);
+                    if (idx !== -1) {
+                        documents[idx] = { ...updated, uploadedAt: updated.uploaded_at, url: updated.url };
+                    }
+                }
+
+                if (documentStructure.folders?.[targetFolder]) {
+                    delete documentStructure.folders[targetFolder];
+                }
+                delete documentFolderExpandedState[targetFolder];
+                Object.keys(documentSubfolderExpandedState)
+                    .filter((key) => key.startsWith(`${targetFolder}::`))
+                    .forEach((key) => delete documentSubfolderExpandedState[key]);
+                registerDocumentLocation('General');
+                saveDocumentStructure();
+
+                if (currentDocumentFolder === targetFolder) {
+                    currentDocumentFolder = 'General';
+                    currentDocumentSubfolder = null;
+                }
+
+                renderDocuments();
+                showNotification(`Folder ${targetFolder} deleted. Documents moved to General.`, 'success');
+            } catch (error) {
+                console.error('❌ Delete folder error:', error);
+                showNotification('Failed to delete folder: ' + error.message, 'error');
+            }
+        }
+        function canMoveDocumentFolderIntoFolder(sourceFolder, targetFolder, shouldNotify = true) {
+            const sourceName = normalizeDocumentFolderName(sourceFolder);
+            const targetName = normalizeDocumentFolderName(targetFolder);
+
+            if (!sourceName || !targetName || sourceName === targetName) {
+                if (shouldNotify) {
+                    showNotification('Choose a different target folder.', 'error');
+                }
+                return false;
+            }
+
+            if (!documentStructure.folders?.[sourceName] || !documentStructure.folders?.[targetName]) {
+                if (shouldNotify) {
+                    showNotification('Both source and target folders must exist.', 'error');
+                }
+                return false;
+            }
+
+            const sourceSubfolders = getDocumentSubfolders(sourceName);
+            if (sourceSubfolders.length > 0) {
+                if (shouldNotify) {
+                    showNotification('Only folders without subfolders can be moved into another folder.', 'error');
+                }
+                return false;
+            }
+
+            if (getDocumentSubfolders(targetName).includes(sourceName)) {
+                if (shouldNotify) {
+                    showNotification(`A subfolder named ${sourceName} already exists in ${targetName}.`, 'error');
+                }
+                return false;
+            }
+
+            return true;
+        }
+
+        async function moveDocumentFolderIntoFolder(sourceFolder, targetFolder, skipConfirm = false) {
+            const sourceName = normalizeDocumentFolderName(sourceFolder);
+            const targetName = normalizeDocumentFolderName(targetFolder);
+
+            if (!canMoveDocumentFolderIntoFolder(sourceName, targetName, true)) {
+                return false;
+            }
+
+            if (!skipConfirm) {
+                const confirmed = confirm(`Move folder "${sourceName}" into "${targetName}"?\n\nIt will become the subfolder ${sourceName} inside ${targetName}.`);
+                if (!confirmed) {
+                    return false;
+                }
+            }
+
+            const docsToMove = documents.filter((doc) => normalizeDocumentFolderName(doc.folder) === sourceName);
+
+            try {
+                for (const doc of docsToMove) {
+                    const updated = await api.request(`/documents/${doc.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            title: doc.title,
+                            folder: targetName,
+                            subfolder: sourceName
+                        })
+                    });
+
+                    const idx = documents.findIndex((item) => item.id == doc.id);
+                    if (idx !== -1) {
+                        documents[idx] = { ...updated, uploadedAt: updated.uploaded_at, url: updated.url };
+                    }
+                }
+
+                if (documentStructure.folders?.[sourceName]) {
+                    delete documentStructure.folders[sourceName];
+                }
+                registerDocumentLocation(targetName, sourceName, false);
+                saveDocumentStructure();
+
+                delete documentFolderExpandedState[sourceName];
+                documentFolderExpandedState[targetName] = true;
+                documentSubfolderExpandedState[getDocumentSubfolderKey(targetName, sourceName)] = true;
+
+                if (currentDocumentFolder === sourceName) {
+                    currentDocumentFolder = targetName;
+                    currentDocumentSubfolder = sourceName;
+                }
+
+                renderDocuments();
+                showNotification(`Moved ${sourceName} into ${targetName}.`, 'success');
+                return true;
+            } catch (error) {
+                console.error('❌ Move folder error:', error);
+                showNotification('Failed to move folder: ' + error.message, 'error');
+                return false;
+            }
+        }
+
+        async function promptMoveDocumentFolder(folder) {
+            const sourceName = normalizeDocumentFolderName(folder);
+            const targetFolders = getDocumentFolders().filter((item) => item !== sourceName);
+
+            if (targetFolders.length === 0) {
+                showNotification('Create another folder before moving this one.', 'error');
+                return;
+            }
+
+            const targetFolderRaw = prompt(`Move folder "${sourceName}" into which folder?\n\nAvailable targets: ${targetFolders.join(', ')}`, targetFolders[0]);
+            if (targetFolderRaw === null) return;
+
+            const targetName = normalizeDocumentFolderName(targetFolderRaw);
+            if (!targetFolders.includes(targetName)) {
+                showNotification('Enter an existing target folder name.', 'error');
+                return;
+            }
+
+            await moveDocumentFolderIntoFolder(sourceName, targetName, true);
+        }
+
+        async function renameDocumentSubfolder(folder, subfolder) {
+            const parentFolder = normalizeDocumentFolderName(folder);
+            const oldSubfolder = normalizeDocumentSubfolderName(subfolder);
+            const nextSubfolderRaw = prompt(`Rename subfolder "${oldSubfolder}" to:`, oldSubfolder);
+            if (nextSubfolderRaw === null) return;
+
+            const nextSubfolder = normalizeDocumentSubfolderName(nextSubfolderRaw);
+            if (!nextSubfolder) {
+                showNotification('Subfolder name cannot be empty.', 'error');
+                return;
+            }
+
+            if (nextSubfolder === oldSubfolder) return;
+
+            const existingSubfolders = getDocumentSubfolders(parentFolder);
+            if (existingSubfolders.includes(nextSubfolder)) {
+                showNotification('A subfolder with that name already exists in this folder.', 'error');
+                return;
+            }
+
+            const docsToMove = documents.filter((doc) => {
+                return normalizeDocumentFolderName(doc.folder) === parentFolder
+                    && normalizeDocumentSubfolderName(doc.subfolder) === oldSubfolder;
+            });
+
+            try {
+                for (const doc of docsToMove) {
+                    const updated = await api.request(`/documents/${doc.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            title: doc.title,
+                            folder: parentFolder,
+                            subfolder: nextSubfolder
+                        })
+                    });
+
+                    const idx = documents.findIndex((item) => item.id == doc.id);
+                    if (idx !== -1) {
+                        documents[idx] = { ...updated, uploadedAt: updated.uploaded_at, url: updated.url };
+                    }
+                }
+
+                const subfolders = documentStructure.folders?.[parentFolder]?.subfolders;
+                if (Array.isArray(subfolders)) {
+                    documentStructure.folders[parentFolder].subfolders = subfolders.map((item) => item === oldSubfolder ? nextSubfolder : item);
+                    saveDocumentStructure();
+                }
+
+                const oldSubfolderKey = getDocumentSubfolderKey(parentFolder, oldSubfolder);
+                if (Object.prototype.hasOwnProperty.call(documentSubfolderExpandedState, oldSubfolderKey)) {
+                    documentSubfolderExpandedState[getDocumentSubfolderKey(parentFolder, nextSubfolder)] = documentSubfolderExpandedState[oldSubfolderKey];
+                    delete documentSubfolderExpandedState[oldSubfolderKey];
+                }
+
+                if (currentDocumentFolder === parentFolder && currentDocumentSubfolder === oldSubfolder) {
+                    currentDocumentSubfolder = nextSubfolder;
+                }
+
+                renderDocuments();
+                showNotification(`Subfolder renamed to ${nextSubfolder}.`, 'success');
+            } catch (error) {
+                console.error('❌ Rename subfolder error:', error);
+                showNotification('Failed to rename subfolder: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteDocumentSubfolder(folder, subfolder) {
+            const parentFolder = normalizeDocumentFolderName(folder);
+            const targetSubfolder = normalizeDocumentSubfolderName(subfolder);
+            if (!targetSubfolder) return;
+
+            const confirmed = confirm(`Delete subfolder "${targetSubfolder}" from "${parentFolder}"?\n\nDocuments will be moved to the ${parentFolder} folder root.`);
+            if (!confirmed) return;
+
+            const docsToMove = documents.filter((doc) => {
+                return normalizeDocumentFolderName(doc.folder) === parentFolder
+                    && normalizeDocumentSubfolderName(doc.subfolder) === targetSubfolder;
+            });
+
+            try {
+                for (const doc of docsToMove) {
+                    const updated = await api.request(`/documents/${doc.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            title: doc.title,
+                            folder: parentFolder,
+                            subfolder: null
+                        })
+                    });
+
+                    const idx = documents.findIndex((item) => item.id == doc.id);
+                    if (idx !== -1) {
+                        documents[idx] = { ...updated, uploadedAt: updated.uploaded_at, url: updated.url };
+                    }
+                }
+
+                const subfolders = documentStructure.folders?.[parentFolder]?.subfolders;
+                if (Array.isArray(subfolders)) {
+                    documentStructure.folders[parentFolder].subfolders = subfolders.filter((item) => item !== targetSubfolder);
+                    saveDocumentStructure();
+                }
+
+                delete documentSubfolderExpandedState[getDocumentSubfolderKey(parentFolder, targetSubfolder)];
+
+                if (currentDocumentFolder === parentFolder && currentDocumentSubfolder === targetSubfolder) {
+                    currentDocumentSubfolder = null;
+                }
+
+                renderDocuments();
+                showNotification(`Subfolder ${targetSubfolder} deleted. Documents moved to ${parentFolder}.`, 'success');
+            } catch (error) {
+                console.error('❌ Delete subfolder error:', error);
+                showNotification('Failed to delete subfolder: ' + error.message, 'error');
+            }
+        }
+
+        function openDocumentUploadFromCurrentPath() {
+            if (!currentDocumentFolder) {
+                showNotification('Open a folder or subfolder before uploading a document.', 'error');
+                return;
+            }
+            openModal('document');
+        }
+
+        function updateDocumentFolderOptions() {
+            const folderInput = document.getElementById('documentFolder');
+            const subfolderInput = document.getElementById('documentSubfolder');
+            const locationDisplay = document.getElementById('documentLocationDisplay');
+            if (!folderInput || !subfolderInput || !locationDisplay) return;
+
+            if (!folderInput.value.trim() && currentDocumentFolder) {
+                folderInput.value = currentDocumentFolder;
+            }
+            if (!subfolderInput.value.trim() && currentDocumentSubfolder) {
+                subfolderInput.value = currentDocumentSubfolder;
+            }
+
+            const folderName = folderInput.value.trim();
+            const subfolderName = subfolderInput.value.trim();
+            locationDisplay.textContent = folderName
+                ? `Folder: ${folderName}${subfolderName ? ` / ${subfolderName}` : ''}`
+                : 'Select a folder before uploading.';
+        }
+
+        function renderDocumentCards(items, icon, onClickBuilder, countBuilder) {
+            return `
+                <div style="display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                    ${items.map((item) => `
+                        <button type="button" class="goal-item" style="text-align: left; cursor: pointer; margin: 0;" onclick='${onClickBuilder(item)}'>
+                            <div class="goal-header" style="margin-bottom: 0;">
+                                <div class="goal-info">
+                                    <h3>${icon} ${item}</h3>
+                                    <p class="goal-target">${countBuilder(item)}</p>
+                                </div>
+                            </div>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function getDocumentsForLocation(folder = null, subfolder = null) {
+            return documents
+                .filter((doc) => {
+                    if (folder && normalizeDocumentFolderName(doc.folder) !== normalizeDocumentFolderName(folder)) {
+                        return false;
+                    }
+
+                    if (subfolder === null) {
+                        return true;
+                    }
+
+                    return normalizeDocumentSubfolderName(doc.subfolder) === normalizeDocumentSubfolderName(subfolder);
+                })
+                .sort((a, b) => new Date(b.uploadedAt || b.createdAt || 0) - new Date(a.uploadedAt || a.createdAt || 0));
+        }
+
+        function buildDocumentExplorerSidebar() {
+            const folderEntries = getDocumentFolders();
+
+            return `
+                <div class="document-sidebar">
+                    <div class="document-sidebar-title">Explorer</div>
+                    <div class="document-tree-row">
+                        <button type="button" class="document-tree-item ${!currentDocumentFolder ? 'active' : ''}" onclick='navigateDocumentExplorer(null, null)'>
+                            <span class="document-tree-item-main">
+                                <span class="document-tree-item-label">🗂️ Documents</span>
+                                <span class="document-tree-item-meta">${documents.length} file(s)</span>
+                            </span>
+                        </button>
+                        <div class="document-tree-row-actions">
+                            <button type="button" class="icon-btn" title="${documentRootExpanded ? 'Collapse Root' : 'Expand Root'}" onclick='event.stopPropagation(); toggleDocumentRootExpanded();'>${documentRootExpanded ? '▾' : '▸'}</button>
+                        </div>
+                    </div>
+                    ${documentRootExpanded ? (folderEntries.length === 0
+                        ? '<div class="document-empty-pane">No folders yet.</div>'
+                        : folderEntries.map((folder) => {
+                        const folderDocs = getDocumentsForLocation(folder, null);
+                        const subfolders = getDocumentSubfolders(folder);
+                        const isExpanded = documentFolderExpandedState[folder] !== false;
+                        return `
+                            <div>
+                                <div class="document-tree-row" draggable="true" ondragstart='handleDocumentFolderDragStart(event, ${JSON.stringify(folder)})' ondragend='handleDocumentFolderDragEnd(event)' ondragover='handleDocumentFolderDragOver(event, ${JSON.stringify(folder)})' ondragleave='handleDocumentFolderDragLeave(event)' ondrop='handleDocumentFolderDrop(event, ${JSON.stringify(folder)})'>
+                                    <button type="button" class="document-tree-item is-folder ${currentDocumentFolder === folder && !currentDocumentSubfolder ? 'active' : ''}" onclick='navigateDocumentExplorer(${JSON.stringify(folder)}, null)'>
+                                        <span class="document-tree-item-main">
+                                            <span class="document-tree-item-label">📁 ${folder}</span>
+                                            <span class="document-tree-item-meta">${folderDocs.length} file(s) • ${subfolders.length} subfolder(s)</span>
+                                        </span>
+                                    </button>
+                                    <div class="document-tree-row-actions">
+                                        <button type="button" class="icon-btn" title="${isExpanded ? 'Collapse Folder' : 'Expand Folder'}" onclick='event.stopPropagation(); toggleDocumentFolderExpanded(${JSON.stringify(folder)});'>${isExpanded ? '▾' : '▸'}</button>
+                                        <button type="button" class="icon-btn" title="Move Folder" onclick='event.stopPropagation(); promptMoveDocumentFolder(${JSON.stringify(folder)});'>📦</button>
+                                        <button type="button" class="icon-btn" title="Rename Folder" onclick='event.stopPropagation(); renameDocumentFolder(${JSON.stringify(folder)});'>✏️</button>
+                                        <button type="button" class="icon-btn" title="Delete Folder" onclick='event.stopPropagation(); deleteDocumentFolder(${JSON.stringify(folder)});'>🗑️</button>
+                                    </div>
+                                </div>
+                                ${isExpanded ? subfolders.map((subfolder) => {
+                                    const subfolderDocs = getDocumentsForLocation(folder, subfolder);
+                                    const subfolderKey = getDocumentSubfolderKey(folder, subfolder);
+                                    const isSubfolderExpanded = documentSubfolderExpandedState[subfolderKey] !== false;
+                                    return `
+                                        <div>
+                                            <div class="document-tree-row">
+                                                <button type="button" class="document-tree-item is-subfolder ${currentDocumentFolder === folder && currentDocumentSubfolder === subfolder ? 'active' : ''}" onclick='navigateDocumentExplorer(${JSON.stringify(folder)}, ${JSON.stringify(subfolder)})'>
+                                                    <span class="document-tree-item-main">
+                                                        <span class="document-tree-item-label">📂 ${subfolder}</span>
+                                                        <span class="document-tree-item-meta">${subfolderDocs.length} file(s)</span>
+                                                    </span>
+                                                </button>
+                                                <div class="document-tree-row-actions">
+                                                    <button type="button" class="icon-btn" title="${isSubfolderExpanded ? 'Collapse Subfolder' : 'Expand Subfolder'}" onclick='event.stopPropagation(); toggleDocumentSubfolderExpanded(${JSON.stringify(folder)}, ${JSON.stringify(subfolder)});'>${isSubfolderExpanded ? '▾' : '▸'}</button>
+                                                    <button type="button" class="icon-btn" title="Rename Subfolder" onclick='event.stopPropagation(); renameDocumentSubfolder(${JSON.stringify(folder)}, ${JSON.stringify(subfolder)});'>✏️</button>
+                                                    <button type="button" class="icon-btn" title="Delete Subfolder" onclick='event.stopPropagation(); deleteDocumentSubfolder(${JSON.stringify(folder)}, ${JSON.stringify(subfolder)});'>🗑️</button>
+                                                </div>
+                                            </div>
+                                            ${isSubfolderExpanded ? (subfolderDocs.length > 0
+                                                ? subfolderDocs.map((doc) => `
+                                                    <button type="button" class="document-tree-item is-document" onclick='window.open(${JSON.stringify(doc.url)}, "_blank")'>
+                                                        <span class="document-tree-item-main">
+                                                            <span class="document-tree-item-label">📄 ${doc.title}</span>
+                                                            <span class="document-tree-item-meta">${doc.file_name || 'File'}</span>
+                                                        </span>
+                                                    </button>
+                                                `).join('')
+                                                : '<div class="document-tree-empty">No files in this subfolder.</div>') : ''}
+                                        </div>
+                                    `;
+                                }).join('') : ''}
+                            </div>
+                        `;
+                    }).join('')) : ''}
+                </div>
+            `;
+        }
+
+        function renderDocumentFileList(fileItems) {
+            if (fileItems.length === 0) {
+                return `
+                    <div class="document-empty-pane">
+                        <div class="empty-state-icon">📄</div>
+                        <p>No documents in this location yet.</p>
+                    </div>
+                `;
+            }
+
+            const visibleItemsMeta = getVisibleListItems(fileItems, 'documents');
+
+            return `
+                <div class="document-file-list">
+                    <div class="document-file-row header">
+                        <div>Name</div>
+                        <div>Updated</div>
+                        <div style="text-align: right;">Actions</div>
+                    </div>
+                    ${visibleItemsMeta.items.map((doc) => `
+                        <div class="document-file-row">
+                            <div>
+                                <div class="document-file-name">${doc.title}</div>
+                                <div class="document-file-meta">${doc.file_name}</div>
+                            </div>
+                            <div class="document-file-meta">${formatDateTime(doc.uploadedAt || doc.createdAt || new Date().toISOString())}</div>
+                            <div class="document-file-actions">
+                                <a class="btn btn-secondary" href="${doc.url}" target="_blank">Download</a>
+                                <button class="icon-btn" onclick="editDocument(${doc.id})" title="Edit">✏️</button>
+                                <button class="icon-btn" onclick="deleteDocument(${doc.id})" title="Delete">🗑️</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function buildDocumentDropzoneMarkup(locationLabel) {
+            return `
+                <div class="document-dropzone" onclick="openDocumentDropUploadPicker()" ondragenter="handleDocumentDragEnter(event)" ondragover="handleDocumentDragOver(event)" ondragleave="handleDocumentDragLeave(event)" ondrop="handleDocumentDrop(event)">
+                    <div class="document-dropzone-icon">📥</div>
+                    <div class="document-dropzone-title">Drop files here to upload</div>
+                    <div class="document-dropzone-copy">Current location: ${locationLabel}. You can drag one or many files here, or click this area to choose files.</div>
+                </div>
+            `;
+        }
+
+        function deriveDocumentTitleFromFileName(fileName) {
+            const cleanedName = (fileName || '').trim();
+            if (!cleanedName) return 'Untitled Document';
+            return cleanedName.replace(/\.[^.]+$/, '') || cleanedName;
+        }
+
+        function getCurrentDocumentUploadPath() {
+            if (!currentDocumentFolder) {
+                return null;
+            }
+
+            return {
+                folder: normalizeDocumentFolderName(currentDocumentFolder),
+                subfolder: normalizeDocumentSubfolderName(currentDocumentSubfolder)
+            };
+        }
+
+        function openDocumentDropUploadPicker() {
+            const uploadPath = getCurrentDocumentUploadPath();
+            if (!uploadPath) {
+                showNotification('Open a folder or subfolder before uploading files.', 'error');
+                return;
+            }
+
+            const fileInput = document.getElementById('documentDropUploadInput');
+            if (!fileInput) return;
+            fileInput.value = '';
+            fileInput.click();
+        }
+
+        async function handleDocumentDropInputChange(event) {
+            try {
+                await uploadDocumentsToCurrentPath(event.target?.files || []);
+            } catch (error) {
+                console.error('❌ Document picker upload error:', error);
+                showNotification('Failed to upload selected files: ' + error.message, 'error');
+            } finally {
+                if (event.target) {
+                    event.target.value = '';
+                }
+            }
+        }
+
+        function handleDocumentDragEnter(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('drag-active');
+        }
+
+        function handleDocumentDragOver(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+            event.currentTarget.classList.add('drag-active');
+        }
+
+        function handleDocumentDragLeave(event) {
+            event.preventDefault();
+            const relatedTarget = event.relatedTarget;
+            if (relatedTarget && event.currentTarget.contains(relatedTarget)) {
+                return;
+            }
+            event.currentTarget.classList.remove('drag-active');
+        }
+
+        async function uploadDocumentsToCurrentPath(fileList) {
+            const uploadPath = getCurrentDocumentUploadPath();
+            if (!uploadPath) {
+                showNotification('Open a folder or subfolder before uploading files.', 'error');
+                return;
+            }
+
+            const files = Array.from(fileList || []).filter((file) => file instanceof File);
+            if (files.length === 0) {
+                showNotification('No files found to upload.', 'error');
+                return;
+            }
+
+            const uploadedDocs = [];
+            for (const file of files) {
+                const title = deriveDocumentTitleFromFileName(file.name);
+                const uploaded = await api.uploadDocument(title, file, uploadPath.folder, uploadPath.subfolder);
+                uploadedDocs.push({ ...uploaded, uploadedAt: uploaded.uploaded_at, url: uploaded.url });
+            }
+
+            documents.push(...uploadedDocs);
+            registerDocumentLocation(uploadPath.folder, uploadPath.subfolder);
+            renderDocuments();
+            showNotification(`${uploadedDocs.length} document(s) uploaded to ${uploadPath.folder}${uploadPath.subfolder ? ` / ${uploadPath.subfolder}` : ''}.`, 'success');
+        }
+
+        async function handleDocumentDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('drag-active');
+
+            try {
+                await uploadDocumentsToCurrentPath(event.dataTransfer?.files || []);
+            } catch (error) {
+                console.error('❌ Document drop upload error:', error);
+                showNotification('Failed to upload dropped files: ' + error.message, 'error');
+            }
+        }
+
+        function handleDocumentFolderDragStart(event, folder) {
+            draggedDocumentFolder = normalizeDocumentFolderName(folder);
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', draggedDocumentFolder);
+            event.currentTarget.classList.add('is-dragging');
+        }
+
+        function handleDocumentFolderDragEnd(event) {
+            draggedDocumentFolder = null;
+            event.currentTarget.classList.remove('is-dragging');
+            document.querySelectorAll('.document-tree-row.is-drop-target').forEach((node) => node.classList.remove('is-drop-target'));
+        }
+
+        function handleDocumentFolderDragOver(event, targetFolder) {
+            if (!draggedDocumentFolder || !canMoveDocumentFolderIntoFolder(draggedDocumentFolder, targetFolder, false)) {
+                return;
+            }
+
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            event.currentTarget.classList.add('is-drop-target');
+        }
+
+        function handleDocumentFolderDragLeave(event) {
+            event.currentTarget.classList.remove('is-drop-target');
+        }
+
+        async function handleDocumentFolderDrop(event, targetFolder) {
+            if (!draggedDocumentFolder) {
+                return;
+            }
+
+            event.preventDefault();
+            event.currentTarget.classList.remove('is-drop-target');
+
+            await moveDocumentFolderIntoFolder(draggedDocumentFolder, targetFolder, true);
+            draggedDocumentFolder = null;
+        }
+
         function resetDocumentModal() {
             document.getElementById('documentModalTitle').textContent = 'Upload Document';
             document.getElementById('documentId').value = '';
             document.getElementById('documentTitle').value = '';
-            document.getElementById('documentFolder').value = '';
-            document.getElementById('documentSubfolder').value = '';
+            document.getElementById('documentFolder').value = currentDocumentFolder || '';
+            document.getElementById('documentSubfolder').value = currentDocumentSubfolder || '';
             document.getElementById('documentFile').value = null;
             document.getElementById('documentFile').required = true;
             document.getElementById('documentFileHelper').textContent = 'Choose a file to upload.';
@@ -7018,96 +8296,134 @@
             const list = document.getElementById('documentList');
             if (!list) return;
 
-            updateDocumentFolderOptions();
+            syncDocumentStructureWithDocuments();
 
-            if (documents.length === 0) {
-                list.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📁</div>
-                        <p>No documents uploaded. Add important documents here.</p>
-                    </div>
-                `;
-                renderListToggle('documentListToggle', 'documents', 0, 'folders');
-                return;
+            const backButton = document.getElementById('documentBackBtn');
+            const createSubfolderButton = document.getElementById('documentCreateSubfolderBtn');
+            const uploadButton = document.getElementById('documentUploadBtn');
+            const breadcrumb = document.getElementById('documentBreadcrumb');
+
+            if (backButton) {
+                backButton.style.display = currentDocumentFolder ? 'inline-flex' : 'none';
+                backButton.textContent = currentDocumentSubfolder ? '← Back to Folder' : '← Back to Folders';
+                backButton.setAttribute('onclick', currentDocumentSubfolder
+                    ? `navigateDocumentExplorer(${JSON.stringify(currentDocumentFolder)}, null)`
+                    : 'navigateDocumentExplorer(null, null)');
+            }
+            if (createSubfolderButton) {
+                createSubfolderButton.style.display = currentDocumentFolder ? 'inline-flex' : 'none';
+            }
+            if (uploadButton) {
+                uploadButton.style.display = currentDocumentFolder ? 'inline-flex' : 'none';
+            }
+            if (breadcrumb) {
+                breadcrumb.innerHTML = currentDocumentFolder
+                    ? `<div class="helper-text">Documents / <button type="button" class="icon-btn" onclick="navigateDocumentExplorer(null, null)">All Documents</button> / <button type="button" class="icon-btn" onclick="navigateDocumentExplorer(${JSON.stringify(currentDocumentFolder)}, null)">${currentDocumentFolder}</button>${currentDocumentSubfolder ? ` / <span style="color: var(--text); font-weight: 600;">${currentDocumentSubfolder}</span>` : ''}</div>`
+                    : '<div class="helper-text">Browse folders from the left pane, then upload documents into the current location.</div>';
             }
 
-            const groupedDocuments = {};
-            documents.forEach((doc) => {
-                const folder = doc.folder || 'General';
-                const subfolder = doc.subfolder || 'Unsorted';
-                if (!groupedDocuments[folder]) {
-                    groupedDocuments[folder] = {};
-                }
-                if (!groupedDocuments[folder][subfolder]) {
-                    groupedDocuments[folder][subfolder] = [];
-                }
-                groupedDocuments[folder][subfolder].push(doc);
-            });
+            const folderEntries = getDocumentFolders();
+            const folderDocuments = currentDocumentFolder ? getDocumentsForLocation(currentDocumentFolder, '') : [];
+            const subfolders = currentDocumentFolder ? getDocumentSubfolders(currentDocumentFolder) : [];
+            const subfolderDocuments = currentDocumentFolder && currentDocumentSubfolder
+                ? getDocumentsForLocation(currentDocumentFolder, currentDocumentSubfolder)
+                : [];
+            const recentDocuments = getDocumentsForLocation(null, null).slice(0, 8);
 
-            const groupedEntries = Object.entries(groupedDocuments);
-            const visibleItemsMeta = getVisibleListItems(groupedEntries, 'documents');
+            let paneTitle = 'All Documents';
+            let paneSubtitle = folderEntries.length === 0
+                ? 'Create a folder to start organizing uploads.'
+                : 'Browse folders on the left and upload files into the selected location.';
+            let paneBadge = `${documents.length} file(s)`;
+            let paneContent = `
+                <div class="document-empty-pane">
+                    <div class="empty-state-icon">🗂️</div>
+                    <p>Select a folder from the left to open it like an explorer.</p>
+                </div>
+            `;
+            let toggleCount = 0;
 
-            list.innerHTML = visibleItemsMeta.items.map(([folder, subfolders]) => `
-                <div class="goal-item">
-                    <div class="goal-header">
-                        <div class="goal-info">
-                            <h3>📁 ${folder}</h3>
-                            <p class="goal-target">${Object.values(subfolders).reduce((sum, items) => sum + items.length, 0)} document(s)</p>
-                        </div>
-                    </div>
-                    ${Object.entries(subfolders).map(([subfolder, docs]) => `
-                        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
-                            <h4 style="font-size: 14px; margin-bottom: 12px; color: var(--text-secondary);">📂 ${subfolder}</h4>
-                            <div style="display: grid; gap: 12px;">
-                                ${docs.map(doc => `
-                                    <div class="goal-item" style="margin: 0; box-shadow: none;">
-                                        <div class="goal-header" style="align-items: center; gap: 16px;">
-                                            <div>
-                                                <h3>${doc.title}</h3>
-                                                <p class="goal-target">Filename: ${doc.file_name}</p>
-                                            </div>
-                                            <div class="goal-progress-text">
-                                                <a class="btn btn-secondary" href="${doc.url}" target="_blank">Download</a>
-                                                <button class="icon-btn" onclick="editDocument(${doc.id})" title="Edit">✏️</button>
-                                                <button class="icon-btn" onclick="deleteDocument(${doc.id})" title="Delete">🗑️</button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                `).join('')}
+            if (currentDocumentFolder && !currentDocumentSubfolder) {
+                paneTitle = currentDocumentFolder;
+                paneSubtitle = subfolders.length > 0
+                    ? `${subfolders.length} subfolder(s) and ${folderDocuments.length} file(s) in this folder.`
+                    : `${folderDocuments.length} file(s) in this folder.`;
+                paneBadge = `${folderDocuments.length} file(s)`;
+                paneContent = `
+                    ${buildDocumentDropzoneMarkup(currentDocumentFolder)}
+                    ${subfolders.length > 0 ? `
+                        <div>
+                            <div class="document-section-title">Subfolders</div>
+                            <div class="document-subfolder-grid">
+                                ${subfolders.map((subfolder) => {
+                                    const subfolderDocCount = getDocumentsForLocation(currentDocumentFolder, subfolder).length;
+                                    return `
+                                        <button type="button" class="document-subfolder-card" onclick='navigateDocumentExplorer(${JSON.stringify(currentDocumentFolder)}, ${JSON.stringify(subfolder)})'>
+                                            <div style="font-size: 16px; font-weight: 700; color: var(--text);">📂 ${subfolder}</div>
+                                            <div class="document-file-meta">${subfolderDocCount} file(s)</div>
+                                        </button>
+                                    `;
+                                }).join('')}
                             </div>
                         </div>
-                    `).join('')}
+                    ` : ''}
+                    <div>
+                        <div class="document-section-title">Files</div>
+                        ${renderDocumentFileList(folderDocuments)}
+                    </div>
+                `;
+                toggleCount = folderDocuments.length;
+            } else if (currentDocumentFolder && currentDocumentSubfolder) {
+                paneTitle = currentDocumentSubfolder;
+                paneSubtitle = `Inside ${currentDocumentFolder}`;
+                paneBadge = `${subfolderDocuments.length} file(s)`;
+                paneContent = `
+                    ${buildDocumentDropzoneMarkup(`${currentDocumentFolder} / ${currentDocumentSubfolder}`)}
+                    <div>
+                        <div class="document-section-title">Files</div>
+                        ${renderDocumentFileList(subfolderDocuments)}
+                    </div>
+                `;
+                toggleCount = subfolderDocuments.length;
+            } else if (recentDocuments.length > 0) {
+                paneContent = `
+                    <div>
+                        <div class="document-section-title">Recent Files</div>
+                        ${renderDocumentFileList(recentDocuments)}
+                    </div>
+                `;
+                toggleCount = recentDocuments.length;
+            }
+
+            list.innerHTML = `
+                <div class="document-explorer">
+                    ${buildDocumentExplorerSidebar()}
+                    <div class="document-pane">
+                        <div class="document-pane-header">
+                            <div>
+                                <div class="document-pane-title">${paneTitle}</div>
+                                <div class="document-pane-subtitle">${paneSubtitle}</div>
+                            </div>
+                            <div class="document-pane-badge">${paneBadge}</div>
+                        </div>
+                        ${paneContent}
+                    </div>
                 </div>
-            `).join('');
-            renderListToggle('documentListToggle', 'documents', groupedEntries.length, 'folders');
-        }
-
-        function updateDocumentFolderOptions() {
-            const folderOptions = document.getElementById('documentFolderOptions');
-            const subfolderOptions = document.getElementById('documentSubfolderOptions');
-            const folderInput = document.getElementById('documentFolder');
-            if (!folderOptions || !subfolderOptions || !folderInput) return;
-
-            const folders = [...new Set(documents.map(doc => doc.folder).filter(Boolean))].sort();
-            folderOptions.innerHTML = folders.map(folder => `<option value="${folder}"></option>`).join('');
-
-            const selectedFolder = folderInput.value.trim();
-            const subfolders = [...new Set(
-                documents
-                    .filter(doc => (doc.folder || 'General') === (selectedFolder || 'General'))
-                    .map(doc => doc.subfolder)
-                    .filter(Boolean)
-            )].sort();
-            subfolderOptions.innerHTML = subfolders.map(subfolder => `<option value="${subfolder}"></option>`).join('');
+            `;
+            renderListToggle('documentListToggle', 'documents', toggleCount, 'documents');
         }
 
         async function saveDocument(e, explicitUpdate = false) {
             e.preventDefault();
             const id = document.getElementById('documentId').value;
             const title = document.getElementById('documentTitle').value;
-            const folder = document.getElementById('documentFolder').value.trim() || 'General';
+            const folder = document.getElementById('documentFolder').value.trim() || currentDocumentFolder || 'General';
             const subfolder = document.getElementById('documentSubfolder').value.trim();
             const fileInput = document.getElementById('documentFile');
+            if (!folder) {
+                showNotification('Open a folder before uploading or updating a document.', 'error');
+                return;
+            }
             if (!id && !fileInput.files.length) {
                 showNotification('Select a file to upload.', 'error');
                 return;
@@ -7135,6 +8451,7 @@
                     showNotification('Document uploaded successfully.', 'success');
                 }
 
+                registerDocumentLocation(folder, subfolder);
                 renderDocuments();
                 closeModal('document');
             } catch (error) {
@@ -7205,8 +8522,6 @@
                 <table class="transaction-table">
                     <thead>
                         <tr>
-                            <th>Investment Name</th>
-                            <th>Type</th>
                             <th style="text-align: right;">Invested</th>
                             <th style="text-align: right;">Value</th>
                             <th style="text-align: right;">Gain/Loss</th>
@@ -8509,13 +9824,32 @@
             });
         }
 
+        function applyTabMenuFilter() {
+            const searchInput = document.getElementById('tabMenuSearch');
+            const query = (searchInput?.value || '').trim().toLowerCase();
+
+            document.querySelectorAll('.tab-menu-item').forEach((item) => {
+                const roleHidden = item.id === 'usersTabButton' && !isAdmin();
+                const matches = !query || item.textContent.toLowerCase().includes(query);
+                item.style.display = roleHidden ? 'none' : (matches ? 'block' : 'none');
+            });
+        }
+
         function openTabMenu(focusTarget = 'active') {
             const tabMenu = document.getElementById('tabMenu');
             const menuButton = document.getElementById('tabMenuButton');
+            const searchInput = document.getElementById('tabMenuSearch');
             if (!tabMenu || !menuButton) return;
 
             tabMenu.classList.add('open');
             menuButton.setAttribute('aria-expanded', 'true');
+
+            applyTabMenuFilter();
+
+            if (focusTarget === 'search') {
+                searchInput?.focus();
+                return;
+            }
 
             const items = getVisibleTabMenuItems();
             if (!items.length) return;
@@ -8532,8 +9866,13 @@
         function closeTabMenu() {
             const tabMenu = document.getElementById('tabMenu');
             const menuButton = document.getElementById('tabMenuButton');
+            const searchInput = document.getElementById('tabMenuSearch');
             if (tabMenu) tabMenu.classList.remove('open');
             if (menuButton) menuButton.setAttribute('aria-expanded', 'false');
+            if (searchInput) {
+                searchInput.value = '';
+            }
+            applyTabMenuFilter();
         }
 
         function toggleTabMenu() {
@@ -8546,7 +9885,7 @@
                 return;
             }
 
-            openTabMenu('active');
+            openTabMenu('search');
         }
 
         function selectTabFromMenu(tab, element = null) {
@@ -8557,8 +9896,21 @@
         // Tab switching
         function switchTab(tab, element = null) {
             document.querySelectorAll('.tab-menu-item').forEach(t => t.classList.remove('active'));
-            const tabButton = element || document.querySelector(`.tab-menu-item[data-tab="${tab}"]`);
-            if (tabButton) tabButton.classList.add('active');
+            document.querySelectorAll('.quick-tab').forEach(t => t.classList.remove('active'));
+
+            const menuTabButton = document.querySelector(`.tab-menu-item[data-tab="${tab}"]`);
+            const quickTabButton = document.querySelector(`.quick-tab[data-tab="${tab}"]`);
+
+            if (menuTabButton) menuTabButton.classList.add('active');
+
+            if (element && element.classList.contains('quick-tab')) {
+                element.classList.add('active');
+            } else if (element && element.classList.contains('tab-menu-item')) {
+                element.classList.add('active');
+                if (quickTabButton) quickTabButton.classList.add('active');
+            } else if (quickTabButton) {
+                quickTabButton.classList.add('active');
+            }
 
             const activeTabLabelEl = document.getElementById('activeTabLabel');
             if (activeTabLabelEl) {
@@ -9645,6 +10997,7 @@
             document.addEventListener('keydown', (e) => {
                 const tabMenu = document.getElementById('tabMenu');
                 const menuButton = document.getElementById('tabMenuButton');
+                const searchInput = document.getElementById('tabMenuSearch');
                 if (!tabMenu || !menuButton) return;
 
                 const target = e.target;
@@ -9671,6 +11024,19 @@
                         e.preventDefault();
                         openTabMenu('last');
                         return;
+                    }
+                    return;
+                }
+
+                if (target === searchInput) {
+                    if (!isOpen || !items.length) return;
+
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        items[0].focus();
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        items[items.length - 1].focus();
                     }
                     return;
                 }
