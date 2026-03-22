@@ -17,8 +17,8 @@ class API {
         pushUrl(window.location.origin + '/api');
 
         // Local development sometimes serves the frontend without the /api proxy.
-        if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port !== '8000') {
-            pushUrl(`${window.location.protocol}//${window.location.hostname}:8000/api`);
+        if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port !== '8000' && window.location.protocol !== 'https:') {
+            pushUrl(`http://${window.location.hostname}:8000/api`);
         }
 
         return urls;
@@ -77,7 +77,13 @@ class API {
 
     getErrorMessage(response, payload, fallbackMessage) {
         if (payload && typeof payload === 'object' && !payload.isHtml) {
-            return payload.detail || payload.message || fallbackMessage;
+            const detail = payload.detail;
+            if (Array.isArray(detail)) {
+                // FastAPI validation errors: [{loc, msg, type}, ...]
+                const msg = detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+                return msg || fallbackMessage;
+            }
+            return detail || payload.message || fallbackMessage;
         }
 
         if (payload && payload.isHtml) {
@@ -112,9 +118,14 @@ class API {
                     continue;
                 }
 
-                throw new Error(errorMessage);
+                const requestError = new Error(errorMessage);
+                requestError.status = response.status;
+                throw requestError;
             } catch (error) {
                 lastError = error;
+                if (error && error.status) {
+                    throw error;
+                }
                 if (index === baseUrls.length - 1) {
                     throw error;
                 }
@@ -148,6 +159,10 @@ class API {
 
             return data;
         } catch (error) {
+            if (error && error.status === 401) {
+                this.clearToken();
+                window.location.href = '/login.html';
+            }
             console.error('API request failed:', error);
             throw error;
         }
@@ -184,7 +199,7 @@ class API {
 
     // Transactions
     async getTransactions() {
-        return this.request('/transactions');
+        return this.request('/transactions?limit=5000');
     }
 
     async createTransaction(transaction) {
@@ -202,6 +217,21 @@ class API {
         delete headers['Content-Type'];
 
         const { data } = await this.fetchJson('/transactions/upload', {
+            method: 'POST',
+            body: formData,
+            headers,
+        });
+        return data;
+    }
+
+    async uploadStatementFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const headers = { ...this.getHeaders() };
+        delete headers['Content-Type'];
+
+        const { data } = await this.fetchJson('/transactions/upload-statement-file', {
             method: 'POST',
             body: formData,
             headers,
@@ -415,6 +445,12 @@ class API {
         return this.request('/integrations/gmail/auth-url');
     }
 
+    async syncGmailBankAlerts() {
+        return this.request('/integrations/gmail/sync-bank-alerts', {
+            method: 'POST',
+        });
+    }
+
     // Audit Logs
     async getAuditLogs() {
         return this.request('/audit-logs');
@@ -442,6 +478,13 @@ class API {
     async deleteUser(userId) {
         return this.request(`/users/${userId}`, {
             method: 'DELETE',
+        });
+    }
+
+    async resetAllFinancialData(password) {
+        return this.request('/admin/reset-all-data', {
+            method: 'POST',
+            body: JSON.stringify({ password }),
         });
     }
 

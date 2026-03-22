@@ -143,6 +143,7 @@ class DocumentUpdate(BaseModel):
     title: Optional[str] = None
     folder: Optional[str] = None
     subfolder: Optional[str] = None
+    frozen_import: Optional[bool] = None
 
 
 class Document(DocumentBase):
@@ -150,6 +151,9 @@ class Document(DocumentBase):
     user_id: int
     file_name: str
     content_type: Optional[str]
+    document_type: str = "general"
+    frozen_import: bool = False
+    imported_transaction_count: int = 0
     uploaded_at: datetime
     url: str
 
@@ -240,6 +244,7 @@ class InvestmentBase(BaseModel):
     current_value: Optional[float] = None
     annual_growth_rate: Optional[float] = None
     monthly_sip: bool = False
+    start_date: Optional[date] = None
     notes: Optional[str] = None
 
 
@@ -254,6 +259,7 @@ class InvestmentUpdate(BaseModel):
     current_value: Optional[float] = None
     annual_growth_rate: Optional[float] = None
     monthly_sip: Optional[bool] = None
+    start_date: Optional[date] = None
     notes: Optional[str] = None
 
 
@@ -387,6 +393,23 @@ class UserStatusUpdate(BaseModel):
     is_active: bool
 
 
+class AdminResetRequest(BaseModel):
+    password: str
+
+
+class AdminResetResponse(BaseModel):
+    message: str
+    transactions_deleted: int = 0
+    budgets_deleted: int = 0
+    goals_deleted: int = 0
+    investments_deleted: int = 0
+    liabilities_deleted: int = 0
+    assets_deleted: int = 0
+    documents_deleted: int = 0
+    integrations_deleted: int = 0
+    files_deleted: int = 0
+
+
 class ExpenseReportEmailRequest(BaseModel):
     recipient_email: EmailStr
     report_month: Optional[str] = None
@@ -407,6 +430,41 @@ class DataImportResponse(BaseModel):
     created: int
     updated: int
     skipped: int
+
+
+class GmailBankAlertTransaction(BaseModel):
+    type: str
+    amount: float
+    description: str
+    category: str
+    date: str
+
+
+class GmailBankAlertSyncResult(BaseModel):
+    message: str
+    imported: int
+    skipped: int
+    errors: int
+    transactions: List[GmailBankAlertTransaction] = []
+
+
+class StatementImportTransaction(BaseModel):
+    date: str
+    description: str
+    amount: float
+    type: str
+    category: str
+
+
+class StatementImportResponse(BaseModel):
+    message: str
+    detected: int
+    imported: int
+    skipped: int
+    liabilities_created: int = 0
+    liabilities_updated: int = 0
+    document: Optional[Document] = None
+    transactions: List[StatementImportTransaction] = []
 
 
 # Dashboard Stats

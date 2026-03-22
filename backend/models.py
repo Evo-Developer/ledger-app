@@ -95,6 +95,9 @@ class Document(Base):
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(1024), nullable=False)
     content_type = Column(String(255), nullable=True)
+    document_type = Column(String(50), nullable=False, default="general")
+    frozen_import = Column(Boolean, nullable=False, default=False)
+    imported_transaction_count = Column(Integer, nullable=False, default=0)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="documents")
@@ -144,6 +147,7 @@ class Investment(Base):
     current_value = Column(Float, nullable=True)
     annual_growth_rate = Column(Float, nullable=True)
     monthly_sip = Column(Boolean, nullable=False, default=False)
+    start_date = Column(Date, nullable=True)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

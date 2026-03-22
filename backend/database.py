@@ -132,6 +132,45 @@ def ensure_document_folder_columns():
             print(f"[database] Warning: could not ensure folder/subfolder columns in documents: {e}")
 
 
+def ensure_document_statement_columns():
+    """Ensure statement import metadata columns exist on documents table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(documents)')).fetchall()]
+                if 'document_type' not in columns:
+                    conn.execute(text("ALTER TABLE documents ADD COLUMN document_type VARCHAR(50) NOT NULL DEFAULT 'general'"))
+                if 'frozen_import' not in columns:
+                    conn.execute(text('ALTER TABLE documents ADD COLUMN frozen_import BOOLEAN NOT NULL DEFAULT 0'))
+                if 'imported_transaction_count' not in columns:
+                    conn.execute(text('ALTER TABLE documents ADD COLUMN imported_transaction_count INTEGER NOT NULL DEFAULT 0'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                statements = [
+                    ('document_type', "ALTER TABLE documents ADD COLUMN document_type VARCHAR(50) NOT NULL DEFAULT 'general'"),
+                    ('frozen_import', 'ALTER TABLE documents ADD COLUMN frozen_import BOOLEAN NOT NULL DEFAULT FALSE'),
+                    ('imported_transaction_count', 'ALTER TABLE documents ADD COLUMN imported_transaction_count INTEGER NOT NULL DEFAULT 0'),
+                ]
+                for column_name, ddl in statements:
+                    exists = conn.execute(text(f"SHOW COLUMNS FROM documents LIKE '{column_name}'")).fetchone()
+                    if not exists:
+                        conn.execute(text(ddl))
+            elif engine.dialect.name == 'postgresql':
+                statements = [
+                    ('document_type', "ALTER TABLE documents ADD COLUMN document_type VARCHAR(50) NOT NULL DEFAULT 'general'"),
+                    ('frozen_import', 'ALTER TABLE documents ADD COLUMN frozen_import BOOLEAN NOT NULL DEFAULT FALSE'),
+                    ('imported_transaction_count', 'ALTER TABLE documents ADD COLUMN imported_transaction_count INTEGER NOT NULL DEFAULT 0'),
+                ]
+                for column_name, ddl in statements:
+                    exists = conn.execute(text(f"SELECT column_name FROM information_schema.columns WHERE table_name='documents' AND column_name='{column_name}'")).fetchone()
+                    if not exists:
+                        conn.execute(text(ddl))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure statement metadata columns in documents: {e}")
+
+
 def ensure_user_role_column():
     """Ensure role column exists on users table."""
     from sqlalchemy import text
@@ -387,6 +426,29 @@ def ensure_investment_annual_growth_rate_column():
             print(f"[database] Warning: could not ensure annual_growth_rate column in investments: {e}")
 
 
+def ensure_investment_start_date_column():
+    """Ensure start_date column exists on investments table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(investments)')).fetchall()]
+                if 'start_date' not in columns:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN start_date DATE'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM investments LIKE 'start_date'")) .fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN start_date DATE NULL'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='investments' AND column_name='start_date'")) .fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN start_date DATE'))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure start_date column in investments: {e}")
+
+
 def ensure_budget_period_column():
     """Ensure period column exists on budgets table."""
     from sqlalchemy import text
@@ -493,10 +555,12 @@ def init_db():
     ensure_integration_oauth_columns()
     ensure_investment_monthly_sip_column()
     ensure_investment_annual_growth_rate_column()
+    ensure_investment_start_date_column()
     ensure_transaction_recurring_column()
     ensure_budget_period_column()
     ensure_budget_recurring_column()
     ensure_budget_start_month_column()
     ensure_transaction_spread_over_year_column()
     ensure_document_folder_columns()
+    ensure_document_statement_columns()
     ensure_goal_target_date_column()

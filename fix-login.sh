@@ -67,7 +67,7 @@ fi
 echo "Checking backend API..."
 BACKEND_READY=0
 for i in {1..30}; do
-    if docker exec ledger_backend curl -s http://localhost:8000/health &> /dev/null; then
+    if docker exec ledger_backend python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=8).read()" &> /dev/null; then
         echo -e "${GREEN}✅ Backend running${NC}"
         BACKEND_READY=1
         break
