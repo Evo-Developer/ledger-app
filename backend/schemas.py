@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from enum import Enum
 
@@ -17,9 +17,17 @@ class AuditAction(str, Enum):
 
 
 class UserRole(str, Enum):
+    SUPERADMIN = "superadmin"
     ADMIN = "admin"
     USER = "user"
     READONLY = "readonly"
+
+
+class UserPermissions(BaseModel):
+    tabs: List[str] = Field(default_factory=list)
+    pages: List[str] = Field(default_factory=list)
+    fields: List[str] = Field(default_factory=list)
+    permissions: List[str] = Field(default_factory=list)
 
 
 # User Schemas
@@ -43,6 +51,9 @@ class UserUpdate(BaseModel):
 class User(UserBase):
     id: int
     role: UserRole
+    permissions: UserPermissions = Field(default_factory=UserPermissions)
+    identity_provider: Optional[str] = None
+    external_subject: Optional[str] = None
     is_active: bool
     created_at: datetime
 
@@ -245,6 +256,7 @@ class InvestmentBase(BaseModel):
     annual_growth_rate: Optional[float] = None
     monthly_sip: bool = False
     start_date: Optional[date] = None
+    goal_id: Optional[int] = None
     notes: Optional[str] = None
 
 
@@ -260,6 +272,7 @@ class InvestmentUpdate(BaseModel):
     annual_growth_rate: Optional[float] = None
     monthly_sip: Optional[bool] = None
     start_date: Optional[date] = None
+    goal_id: Optional[int] = None
     notes: Optional[str] = None
 
 
@@ -279,6 +292,9 @@ class LiabilityBase(BaseModel):
     amount: float
     outstanding: float
     is_loan: bool = False
+    liability_type: Optional[str] = 'general'  # general, credit_card, tax
+    credit_limit: Optional[float] = None
+    is_paid_off: Optional[bool] = False
     loan_start_date: Optional[datetime] = None
     loan_tenure_months: Optional[int] = None
     interest_rate: Optional[float] = None
@@ -298,6 +314,9 @@ class LiabilityUpdate(BaseModel):
     amount: Optional[float] = None
     outstanding: Optional[float] = None
     is_loan: Optional[bool] = None
+    liability_type: Optional[str] = None
+    credit_limit: Optional[float] = None
+    is_paid_off: Optional[bool] = None
     loan_start_date: Optional[datetime] = None
     loan_tenure_months: Optional[int] = None
     interest_rate: Optional[float] = None
@@ -385,8 +404,47 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class UserProfileUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+
+
+class UserPasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ExternalRBACProvisionRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    role: UserRole = UserRole.USER
+    is_active: bool = True
+    permissions: Optional[UserPermissions] = None
+    create_if_missing: bool = True
+    identity_provider: Optional[str] = None
+    external_subject: Optional[str] = None
+
+
+class FederatedClaimSyncRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    groups: List[str] = Field(default_factory=list)
+    claims: Dict[str, Any] = Field(default_factory=dict)
+    role_hint: Optional[UserRole] = None
+    permissions_override: Optional[UserPermissions] = None
+    create_if_missing: bool = True
+    identity_provider: Optional[str] = None
+    external_subject: Optional[str] = None
+
+
 class UserRoleUpdate(BaseModel):
     role: UserRole
+
+
+class UserPermissionsUpdate(BaseModel):
+    permissions: UserPermissions
 
 
 class UserStatusUpdate(BaseModel):

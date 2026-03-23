@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -22,13 +22,15 @@ from urllib.error import HTTPError, URLError
 import ssl
 import time
 import resource
-from fastapi.responses import HTMLResponse
+import asyncio
+import threading
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pypdf import PdfReader
 from openpyxl import load_workbook
 import xlrd
 
 from database import get_db, init_db, engine
-from models import User, Transaction, Asset, Document, Budget, Goal, Investment, Liability, Integration, AuditLog, Base, UserRole
+from models import User, Transaction, Asset, Document, Budget, Goal, Investment, Liability, Integration, AuditLog, AppInsightsMetric, Base, UserRole
 from schemas import (
     UserCreate, User as UserSchema, Transaction as TransactionSchema,
     Asset as AssetSchema, AssetCreate, AssetUpdate,
@@ -39,7 +41,9 @@ from schemas import (
     Liability as LiabilitySchema, LiabilityCreate, LiabilityUpdate,
     Integration as IntegrationSchema, IntegrationCreate, IntegrationUpdate,
     AuditLog as AuditLogSchema, Token, DashboardStats, TransactionFilter,
-    AuditLogFilter, LoginRequest, UserRoleUpdate, UserStatusUpdate,
+    AuditLogFilter, LoginRequest, UserRoleUpdate, UserStatusUpdate, UserPermissionsUpdate,
+    UserProfileUpdate, UserPasswordChange,
+    ExternalRBACProvisionRequest, FederatedClaimSyncRequest,
     AdminResetRequest, AdminResetResponse,
     ExpenseReportEmailRequest, ExpenseReportEmailResponse, IntegrationAuthUrlResponse,
     DataImportResponse, GmailBankAlertSyncResult, StatementImportResponse,
@@ -48,8 +52,9 @@ from schemas import (
 from auth import (
     get_password_hash, verify_password, authenticate_user, create_access_token,
     get_current_active_user, ACCESS_TOKEN_EXPIRE_MINUTES,
-    get_client_ip, check_registration_rate_limit, require_admin, require_write_access,
-    SECRET_KEY, ALGORITHM
+    get_client_ip, check_registration_rate_limit, require_admin, require_superadmin, require_write_access,
+    SECRET_KEY, ALGORITHM, SUPERADMIN_USERNAME, SUPERADMIN_PASSWORD,
+    get_default_permissions, normalize_permissions, user_has_permission
 )
 from integration_providers import get_provider
 
@@ -223,6 +228,207 @@ def _fetch_frontend_nginx_status() -> Dict[str, Optional[float]]:
         "handled": handled,
         "requests_total": requests_total,
     }
+
+
+def _safe_iso_ts(value: Optional[str], fallback: Optional[datetime] = None) -> str:
+    if isinstance(value, str) and value.strip():
+        return value
+    return (fallback or datetime.utcnow()).isoformat()
+
+
+def serialize_user(user: User) -> Dict:
+    permissions = normalize_permissions(user.role, getattr(user, "permissions_json", None))
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "full_name": user.full_name,
+        "role": user.role,
+        "permissions": permissions,
+        "identity_provider": getattr(user, "identity_provider", None),
+        "external_subject": getattr(user, "external_subject", None),
+        "is_active": user.is_active,
+        "created_at": user.created_at,
+    }
+
+
+def ensure_superadmin_account() -> None:
+    db = next(get_db())
+    try:
+        superadmin = db.query(User).filter(User.username == SUPERADMIN_USERNAME).first()
+        superadmin_permissions = json.dumps(get_default_permissions(UserRole.SUPERADMIN.value))
+
+        if not superadmin:
+            superadmin = User(
+                email=f"{SUPERADMIN_USERNAME}@local.ledger-app",
+                username=SUPERADMIN_USERNAME,
+                full_name="Super Admin",
+                hashed_password=get_password_hash(SUPERADMIN_PASSWORD),
+                role=UserRole.SUPERADMIN.value,
+                permissions_json=superadmin_permissions,
+                is_active=True,
+            )
+            db.add(superadmin)
+            db.commit()
+            db.refresh(superadmin)
+            log_audit(db, superadmin.id, "create", "user", str(superadmin.id), "Auto-provisioned default super admin account")
+            return
+
+        changed = False
+        if superadmin.role != UserRole.SUPERADMIN.value:
+            superadmin.role = UserRole.SUPERADMIN.value
+            changed = True
+        if superadmin.permissions_json != superadmin_permissions:
+            superadmin.permissions_json = superadmin_permissions
+            changed = True
+        if not superadmin.is_active:
+            superadmin.is_active = True
+            changed = True
+        if changed:
+            db.commit()
+    finally:
+        db.close()
+
+
+EXTERNAL_RBAC_API_KEY = os.getenv("EXTERNAL_RBAC_API_KEY", "").strip()
+
+
+def verify_external_rbac_api_key(authorization: Optional[str], x_rbac_api_key: Optional[str]) -> None:
+    """Validate machine-to-machine RBAC provisioning key for external IdP systems."""
+    configured_key = EXTERNAL_RBAC_API_KEY
+    if not configured_key:
+        raise HTTPException(status_code=503, detail="External RBAC API is disabled. Configure EXTERNAL_RBAC_API_KEY.")
+
+    provided_key = (x_rbac_api_key or "").strip()
+    if not provided_key and authorization:
+        auth_value = authorization.strip()
+        if auth_value.lower().startswith("bearer "):
+            provided_key = auth_value[7:].strip()
+
+    if not provided_key or provided_key != configured_key:
+        raise HTTPException(status_code=403, detail="Invalid external RBAC API key")
+
+
+def resolve_federated_role(groups: List[str], role_hint: Optional[UserRole]) -> str:
+    normalized_groups = {str(group).strip().lower() for group in (groups or []) if group is not None}
+    if role_hint == UserRole.SUPERADMIN or "superadmin" in normalized_groups:
+        return UserRole.SUPERADMIN.value
+    if role_hint == UserRole.ADMIN or "admin" in normalized_groups:
+        return UserRole.ADMIN.value
+    if role_hint == UserRole.READONLY or "readonly" in normalized_groups or "read_only" in normalized_groups:
+        return UserRole.READONLY.value
+    if role_hint == UserRole.USER:
+        return UserRole.USER.value
+    return UserRole.USER.value
+
+
+def _derive_instance_logs(
+    history: List[Dict],
+    frontend_instance: Dict,
+    backend_instance: Dict,
+    db_instance: Dict,
+    alerts: List[Dict],
+    backend_recent_errors: Optional[List[Dict]] = None,
+) -> Dict[str, List[Dict[str, str]]]:
+    logs: Dict[str, List[Dict[str, str]]] = {
+        "frontend": [],
+        "backend": [],
+        "db": [],
+    }
+
+    def add_log(instance: str, level: str, message: str, ts: Optional[str] = None, source: str = "metrics") -> None:
+        if instance not in logs:
+            return
+        logs[instance].append({
+            "ts": _safe_iso_ts(ts),
+            "level": level,
+            "source": source,
+            "message": message,
+        })
+
+    # Backend logs: concrete recent errors + signal-based warnings from snapshots.
+    for err in (backend_recent_errors or [])[-30:]:
+        path = err.get("path") or "unknown"
+        status_code = err.get("status") or "—"
+        latency = err.get("latency_ms")
+        latency_txt = f" · {latency} ms" if latency is not None else ""
+        add_log(
+            "backend",
+            "error",
+            f"{status_code} on {path}{latency_txt}",
+            ts=err.get("time"),
+            source="http",
+        )
+
+    for snap in history[-80:]:
+        ts = snap.get("ts")
+        be_err = int(snap.get("backend_errors") or 0)
+        be_4xx = int(snap.get("backend_discards") or 0)
+        be_lat = float(snap.get("backend_latency_ms") or 0)
+        if be_err > 0:
+            add_log("backend", "error", f"Backend 5xx total observed: {be_err}", ts=ts, source="timeseries")
+        if be_4xx > 50:
+            add_log("backend", "warn", f"Backend 4xx/discards elevated: {be_4xx}", ts=ts, source="timeseries")
+        if be_lat >= 500:
+            add_log("backend", "warn", f"Backend latency high: {round(be_lat, 2)} ms", ts=ts, source="timeseries")
+
+        fe_conn = snap.get("frontend_connections")
+        fe_wait = snap.get("frontend_waiting")
+        if fe_conn is not None and fe_conn > 300:
+            add_log("frontend", "warn", f"Frontend active connections high: {fe_conn}", ts=ts, source="timeseries")
+        if fe_wait is not None and fe_wait > 200:
+            add_log("frontend", "warn", f"Frontend waiting connections elevated: {fe_wait}", ts=ts, source="timeseries")
+
+        db_conn = int(snap.get("db_connections") or 0)
+        db_err = int(snap.get("db_errors") or 0)
+        db_slow = int(snap.get("db_slow_queries") or 0)
+        if db_conn > 80:
+            add_log("db", "warn", f"DB connections high: {db_conn}", ts=ts, source="timeseries")
+        if db_err > 0:
+            add_log("db", "error", f"DB connection/client errors observed: {db_err}", ts=ts, source="timeseries")
+        if db_slow > 0:
+            add_log("db", "warn", f"DB slow queries observed: {db_slow}", ts=ts, source="timeseries")
+
+    # Alert feed -> instance-specific logs.
+    severity_to_level = {"high": "error", "medium": "warn", "low": "info"}
+    for alert in alerts:
+        instance = (alert.get("instance") or "").lower()
+        if instance not in logs:
+            continue
+        level = severity_to_level.get((alert.get("severity") or "").lower(), "info")
+        add_log(instance, level, alert.get("message") or "Alert", source="alert")
+
+    now_ts = datetime.utcnow().isoformat()
+    if frontend_instance.get("status") == "ok":
+        add_log(
+            "frontend",
+            "info",
+            f"Frontend healthy · active={frontend_instance.get('connection_count')}, waiting={frontend_instance.get('waiting')}",
+            ts=now_ts,
+            source="health",
+        )
+    if backend_instance.get("status") == "ok":
+        add_log(
+            "backend",
+            "info",
+            f"Backend healthy · active={backend_instance.get('connection_count')}, latency={backend_instance.get('details', {}).get('avg_latency_ms')} ms",
+            ts=now_ts,
+            source="health",
+        )
+    if db_instance.get("status") == "ok":
+        add_log(
+            "db",
+            "info",
+            f"DB healthy · connections={db_instance.get('connection_count')}, threads={db_instance.get('details', {}).get('threads_running')}",
+            ts=now_ts,
+            source="health",
+        )
+
+    # Sort descending by timestamp and cap each instance log stream.
+    for instance in logs:
+        logs[instance] = sorted(logs[instance], key=lambda item: item.get("ts", ""), reverse=True)[:250]
+
+    return logs
 
 
 # Helper function to log audit
@@ -1601,7 +1807,8 @@ async def register(user: UserCreate, request: Request, db: Session = Depends(get
         username=user.username,
         full_name=user.full_name,
         hashed_password=hashed_password,
-        role=UserRole.ADMIN.value if user_count == 0 else UserRole.USER.value
+        role=UserRole.ADMIN.value if user_count == 0 else UserRole.USER.value,
+        permissions_json=json.dumps(get_default_permissions(UserRole.ADMIN.value if user_count == 0 else UserRole.USER.value))
     )
     db.add(db_user)
     db.commit()
@@ -1611,7 +1818,7 @@ async def register(user: UserCreate, request: Request, db: Session = Depends(get
     log_audit(db, db_user.id, "create", "user", db_user.id, 
               f"User registered: {user.username}")
     
-    return db_user
+    return serialize_user(db_user)
 
 
 @app.post("/api/auth/login", response_model=Token)
@@ -1662,7 +1869,251 @@ async def login(
 @app.get("/api/auth/me", response_model=UserSchema)
 def read_users_me(current_user: User = Depends(get_current_active_user)):
     """Get current user"""
-    return current_user
+    return serialize_user(current_user)
+
+
+@app.put("/api/auth/me/profile", response_model=UserSchema)
+def update_my_profile(
+    profile_update: UserProfileUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Allow any authenticated user to edit their own profile."""
+    changed_fields = {}
+
+    if profile_update.email is not None:
+        normalized_email = profile_update.email.strip().lower()
+        if not normalized_email:
+            raise HTTPException(status_code=400, detail="Email cannot be empty")
+
+        existing = db.query(User).filter(User.email == normalized_email, User.id != current_user.id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email is already used by another account")
+
+        if current_user.email != normalized_email:
+            changed_fields["email"] = {"from": current_user.email, "to": normalized_email}
+            current_user.email = normalized_email
+
+    if profile_update.full_name is not None:
+        normalized_name = profile_update.full_name.strip() or None
+        if current_user.full_name != normalized_name:
+            changed_fields["full_name"] = {"from": current_user.full_name, "to": normalized_name}
+            current_user.full_name = normalized_name
+
+    if not changed_fields:
+        return serialize_user(current_user)
+
+    db.commit()
+    db.refresh(current_user)
+    log_audit(
+        db,
+        current_user.id,
+        "update",
+        "user_profile",
+        str(current_user.id),
+        f"Updated profile for {current_user.username}",
+        {"fields": changed_fields}
+    )
+    return serialize_user(current_user)
+
+
+@app.post("/api/auth/me/password")
+def change_my_password(
+    password_change: UserPasswordChange,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Allow any authenticated user to change their own password."""
+    current_password = (password_change.current_password or "").strip()
+    new_password = (password_change.new_password or "").strip()
+
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Current and new password are required")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    if current_password == new_password:
+        raise HTTPException(status_code=400, detail="New password must be different from current password")
+    if not verify_password(current_password, current_user.hashed_password):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+
+    current_user.hashed_password = get_password_hash(new_password)
+    db.commit()
+
+    log_audit(
+        db,
+        current_user.id,
+        "update",
+        "user_password",
+        str(current_user.id),
+        f"Changed password for {current_user.username}"
+    )
+    return {"message": "Password updated successfully"}
+
+
+@app.post("/api/rbac/external/provision-user", response_model=UserSchema)
+def external_provision_user_access(
+    payload: ExternalRBACProvisionRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+    x_rbac_api_key: Optional[str] = Header(default=None)
+):
+    """Provision or update user access from an external identity/authentication system."""
+    verify_external_rbac_api_key(authorization, x_rbac_api_key)
+
+    identity_provider = (payload.identity_provider or "").strip() or None
+    external_subject = (payload.external_subject or "").strip() or None
+    username = (payload.username or "").strip()
+    email = (str(payload.email).strip().lower() if payload.email else "")
+
+    db_user = None
+    if external_subject and identity_provider:
+        db_user = db.query(User).filter(
+            User.external_subject == external_subject,
+            User.identity_provider == identity_provider
+        ).first()
+    if not db_user and username:
+        db_user = db.query(User).filter(User.username == username).first()
+    if not db_user and email:
+        db_user = db.query(User).filter(User.email == email).first()
+
+    conflict_user_id = db_user.id if db_user else -1
+    if username:
+        username_conflict = db.query(User).filter(User.username == username, User.id != conflict_user_id).first()
+        if username_conflict:
+            raise HTTPException(status_code=400, detail="Username is already used by another account")
+    if email:
+        email_conflict = db.query(User).filter(User.email == email, User.id != conflict_user_id).first()
+        if email_conflict:
+            raise HTTPException(status_code=400, detail="Email is already used by another account")
+
+    requested_role = payload.role.value
+    permissions_obj = payload.permissions.model_dump() if payload.permissions else get_default_permissions(requested_role)
+
+    if not db_user:
+        if not payload.create_if_missing:
+            raise HTTPException(status_code=404, detail="User not found and create_if_missing=false")
+        if not username or not email:
+            raise HTTPException(status_code=400, detail="username and email are required to create a user")
+
+        db_user = User(
+            username=username,
+            email=email,
+            full_name=payload.full_name,
+            hashed_password=get_password_hash(os.getenv("FEDERATED_PLACEHOLDER_PASSWORD", "change-me-federated-user")),
+            role=requested_role,
+            permissions_json=json.dumps(permissions_obj),
+            is_active=payload.is_active,
+            identity_provider=identity_provider,
+            external_subject=external_subject,
+        )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        log_audit(
+            db,
+            db_user.id,
+            "create",
+            "external_rbac_user",
+            str(db_user.id),
+            f"Provisioned user {db_user.username} via external RBAC API",
+            {
+                "identity_provider": identity_provider,
+                "external_subject": external_subject,
+                "source_ip": get_client_ip(request),
+            }
+        )
+        return serialize_user(db_user)
+
+    db_user.role = requested_role
+    db_user.permissions_json = json.dumps(permissions_obj)
+    db_user.is_active = payload.is_active
+    if payload.full_name is not None:
+        db_user.full_name = payload.full_name
+    if email:
+        db_user.email = email
+    if username:
+        db_user.username = username
+    if identity_provider is not None:
+        db_user.identity_provider = identity_provider
+    if external_subject is not None:
+        db_user.external_subject = external_subject
+
+    db.commit()
+    db.refresh(db_user)
+    log_audit(
+        db,
+        db_user.id,
+        "update",
+        "external_rbac_user",
+        str(db_user.id),
+        f"Updated user {db_user.username} via external RBAC API",
+        {
+            "identity_provider": db_user.identity_provider,
+            "external_subject": db_user.external_subject,
+            "source_ip": get_client_ip(request),
+        }
+    )
+    return serialize_user(db_user)
+
+
+@app.post("/api/rbac/external/federated-sync", response_model=UserSchema)
+def external_federated_claim_sync(
+    payload: FederatedClaimSyncRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+    x_rbac_api_key: Optional[str] = Header(default=None)
+):
+    """Resolve OAuth/federated claims into RBAC and upsert user access configuration."""
+    verify_external_rbac_api_key(authorization, x_rbac_api_key)
+
+    resolved_role = resolve_federated_role(payload.groups, payload.role_hint)
+    resolved_permissions = payload.permissions_override.model_dump() if payload.permissions_override else get_default_permissions(resolved_role)
+
+    provision_payload = ExternalRBACProvisionRequest(
+        username=payload.username,
+        email=payload.email,
+        full_name=payload.full_name,
+        role=UserRole(resolved_role),
+        is_active=True,
+        permissions=payload.permissions_override,
+        create_if_missing=payload.create_if_missing,
+        identity_provider=payload.identity_provider,
+        external_subject=payload.external_subject,
+    )
+
+    user = external_provision_user_access(
+        payload=provision_payload,
+        request=request,
+        db=db,
+        authorization=authorization,
+        x_rbac_api_key=x_rbac_api_key,
+    )
+
+    db_user = db.query(User).filter(User.id == user["id"]).first()
+    if db_user:
+        db_user.permissions_json = json.dumps(resolved_permissions)
+        db.commit()
+        db.refresh(db_user)
+        log_audit(
+            db,
+            db_user.id,
+            "update",
+            "federated_rbac_sync",
+            str(db_user.id),
+            f"Applied federated RBAC mapping for {db_user.username}",
+            {
+                "groups": payload.groups,
+                "role_hint": payload.role_hint.value if payload.role_hint else None,
+                "claims": payload.claims,
+                "resolved_role": resolved_role,
+                "source_ip": get_client_ip(request),
+            }
+        )
+        return serialize_user(db_user)
+
+    raise HTTPException(status_code=500, detail="Federated sync succeeded but user could not be loaded")
 
 
 @app.get("/api/users", response_model=List[UserSchema])
@@ -1671,7 +2122,9 @@ def list_users(
     db: Session = Depends(get_db)
 ):
     """List all users. Admin only."""
-    return db.query(User).order_by(User.created_at.asc()).all()
+    if not user_has_permission(current_user, "manage_users"):
+        raise HTTPException(status_code=403, detail="You do not have permission to manage users")
+    return [serialize_user(user) for user in db.query(User).order_by(User.created_at.asc()).all()]
 
 
 @app.put("/api/users/{user_id}/role", response_model=UserSchema)
@@ -1682,20 +2135,40 @@ def update_user_role(
     db: Session = Depends(get_db)
 ):
     """Update a user's role. Admin only."""
+    if not user_has_permission(current_user, "manage_roles") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage roles")
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     if db_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot change your own role")
-    if db_user.role == UserRole.ADMIN.value and role_update.role.value != UserRole.ADMIN.value:
-        admin_count = db.query(User).filter(User.role == UserRole.ADMIN.value, User.is_active == True).count()
-        if admin_count <= 1:
-            raise HTTPException(status_code=400, detail="At least one active admin must remain")
 
-    db_user.role = role_update.role.value
+    is_current_superadmin = current_user.role == UserRole.SUPERADMIN.value
+    requested_role = role_update.role.value
+
+    if requested_role == UserRole.SUPERADMIN.value and not is_current_superadmin:
+        raise HTTPException(status_code=403, detail="Only the super admin can assign the super admin role")
+
+    if db_user.role == UserRole.SUPERADMIN.value and not is_current_superadmin:
+        raise HTTPException(status_code=403, detail="Only the super admin can modify the super admin account")
+
+    if requested_role == UserRole.ADMIN.value and not is_current_superadmin and current_user.role != UserRole.ADMIN.value:
+        raise HTTPException(status_code=403, detail="Only admins can assign the admin role")
+
+    if current_user.role == UserRole.ADMIN.value and requested_role == UserRole.ADMIN.value:
+        raise HTTPException(status_code=403, detail="Only the super admin can promote another user to admin")
+
+    if db_user.role in {UserRole.ADMIN.value, UserRole.SUPERADMIN.value} and requested_role not in {UserRole.ADMIN.value, UserRole.SUPERADMIN.value}:
+        protected_admin_count = db.query(User).filter(User.role.in_([UserRole.ADMIN.value, UserRole.SUPERADMIN.value]), User.is_active == True).count()
+        if protected_admin_count <= 1:
+            raise HTTPException(status_code=400, detail="At least one active admin-level account must remain")
+
+    db_user.role = requested_role
+    db_user.permissions_json = json.dumps(get_default_permissions(requested_role))
     db.commit()
     db.refresh(db_user)
-    return db_user
+    log_audit(db, current_user.id, "update", "user_role", str(db_user.id), f"Updated role for {db_user.username} to {requested_role}")
+    return serialize_user(db_user)
 
 
 @app.put("/api/users/{user_id}/status", response_model=UserSchema)
@@ -1706,20 +2179,44 @@ def update_user_status(
     db: Session = Depends(get_db)
 ):
     """Block or unblock a user. Admin only."""
+    if not user_has_permission(current_user, "manage_users"):
+        raise HTTPException(status_code=403, detail="You do not have permission to manage users")
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     if db_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot block your own account")
-    if db_user.role == UserRole.ADMIN.value and status_update.is_active is False:
-        admin_count = db.query(User).filter(User.role == UserRole.ADMIN.value, User.is_active == True).count()
+    if db_user.role == UserRole.SUPERADMIN.value and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="Only the super admin can block the super admin account")
+    if db_user.role in {UserRole.ADMIN.value, UserRole.SUPERADMIN.value} and status_update.is_active is False:
+        admin_count = db.query(User).filter(User.role.in_([UserRole.ADMIN.value, UserRole.SUPERADMIN.value]), User.is_active == True).count()
         if admin_count <= 1:
-            raise HTTPException(status_code=400, detail="At least one active admin must remain")
+            raise HTTPException(status_code=400, detail="At least one active admin-level account must remain")
 
     db_user.is_active = status_update.is_active
     db.commit()
     db.refresh(db_user)
-    return db_user
+    log_audit(db, current_user.id, "update", "user_status", str(db_user.id), f"Updated status for {db_user.username} to {'active' if status_update.is_active else 'blocked'}")
+    return serialize_user(db_user)
+
+
+@app.put("/api/users/{user_id}/permissions", response_model=UserSchema)
+def update_user_permissions(
+    user_id: int,
+    permissions_update: UserPermissionsUpdate,
+    current_user: User = Depends(require_superadmin),
+    db: Session = Depends(get_db)
+):
+    """Update a user's tab/page/field/permission access. Super admin only."""
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    db_user.permissions_json = json.dumps(permissions_update.permissions.model_dump())
+    db.commit()
+    db.refresh(db_user)
+    log_audit(db, current_user.id, "update", "user_permissions", str(db_user.id), f"Updated permissions for {db_user.username}")
+    return serialize_user(db_user)
 
 
 @app.delete("/api/users/{user_id}")
@@ -1729,15 +2226,19 @@ def delete_user(
     db: Session = Depends(get_db)
 ):
     """Delete a user account. Admin only."""
+    if not user_has_permission(current_user, "manage_users"):
+        raise HTTPException(status_code=403, detail="You do not have permission to manage users")
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     if db_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account")
-    if db_user.role == UserRole.ADMIN.value:
-        admin_count = db.query(User).filter(User.role == UserRole.ADMIN.value, User.is_active == True).count()
+    if db_user.role == UserRole.SUPERADMIN.value and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="Only the super admin can delete the super admin account")
+    if db_user.role in {UserRole.ADMIN.value, UserRole.SUPERADMIN.value}:
+        admin_count = db.query(User).filter(User.role.in_([UserRole.ADMIN.value, UserRole.SUPERADMIN.value]), User.is_active == True).count()
         if admin_count <= 1:
-            raise HTTPException(status_code=400, detail="At least one active admin must remain")
+            raise HTTPException(status_code=400, detail="At least one active admin-level account must remain")
 
     db.delete(db_user)
     db.commit()
@@ -1752,6 +2253,9 @@ def reset_all_financial_data(
     db: Session = Depends(get_db)
 ):
     """Reset all financial data across the system. Admin password confirmation required."""
+    if not user_has_permission(current_user, "reset_data"):
+        raise HTTPException(status_code=403, detail="You do not have permission to reset financial data")
+
     if not payload.password or not verify_password(payload.password, current_user.hashed_password):
         raise HTTPException(status_code=403, detail="Incorrect admin password")
 
@@ -1815,6 +2319,9 @@ def get_admin_app_insights(
     db: Session = Depends(get_db)
 ):
     """Admin-only runtime insights for frontend, backend and DB instances."""
+    if not user_has_permission(current_user, "view_app_insights"):
+        raise HTTPException(status_code=403, detail="You do not have permission to view app insights")
+
     # Backend instance metrics
     usage = resource.getrusage(resource.RUSAGE_SELF)
     # Linux ru_maxrss is in KB; on macOS it is bytes. Use a conservative conversion.
@@ -1966,6 +2473,15 @@ def get_admin_app_insights(
     if len(APP_INSIGHTS_HISTORY) > MAX_INSIGHTS_HISTORY:
         del APP_INSIGHTS_HISTORY[:-MAX_INSIGHTS_HISTORY]
 
+    instance_logs = _derive_instance_logs(
+        history=list(APP_INSIGHTS_HISTORY),
+        frontend_instance=frontend_instance,
+        backend_instance=backend_instance,
+        db_instance=db_instance,
+        alerts=alerts,
+        backend_recent_errors=backend_instance.get("details", {}).get("recent_errors", []),
+    )
+
     return {
         "generated_at": datetime.utcnow(),
         "instances": {
@@ -1975,11 +2491,315 @@ def get_admin_app_insights(
         },
         "alerts": alerts,
         "history": list(APP_INSIGHTS_HISTORY),
+        "instance_logs": instance_logs,
         "notes": [
             "Frontend CPU/memory and DB CPU/memory require host/container runtime integration and are reported as null for now.",
             "Frontend connection metrics come from nginx stub_status when available.",
         ],
     }
+
+
+@app.get("/api/admin/app-insights/history")
+def get_admin_app_insights_history(
+    hours: Optional[float] = None,
+    days: Optional[float] = None,
+    weeks: Optional[float] = None,
+    months: Optional[float] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Admin-only historical insights data with flexible time range filtering.
+    
+    Query Parameters:
+    - hours: float (e.g., 0.5 for 30min, 24 for 24hrs)
+    - days: float (e.g., 7 for 7 days)
+    - weeks: float (e.g., 1 for 1 week)
+    - months: float (e.g., 1 for 1 month)
+    - start_time: ISO format datetime string (e.g., "2026-03-20T10:30:00")
+    - end_time: ISO format datetime string (e.g., "2026-03-20T12:30:00")
+    
+    If no range is specified, returns last 24 hours by default.
+    """
+    if not user_has_permission(current_user, "view_app_insights"):
+        raise HTTPException(status_code=403, detail="You do not have permission to view app insights")
+    
+    # Determine time range
+    now = datetime.utcnow()
+    
+    if start_time and end_time:
+        try:
+            start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="Invalid start_time or end_time format")
+    else:
+        # Calculate from relative time units
+        total_seconds = 0
+        if months:
+            total_seconds += months * 30 * 24 * 3600  # Approximate
+        if weeks:
+            total_seconds += weeks * 7 * 24 * 3600
+        if days:
+            total_seconds += days * 24 * 3600
+        if hours:
+            total_seconds += hours * 3600
+        
+        if total_seconds <= 0:
+            total_seconds = 24 * 3600  # Default to 24 hours
+        
+        start = now - timedelta(seconds=total_seconds)
+        end = now
+    
+    # Query metrics from database
+    metrics = db.query(AppInsightsMetric).filter(
+        AppInsightsMetric.recorded_at >= start,
+        AppInsightsMetric.recorded_at <= end
+    ).order_by(AppInsightsMetric.recorded_at.asc()).all()
+    
+    if not metrics:
+        return {
+            "start_time": start.isoformat(),
+            "end_time": end.isoformat(),
+            "record_count": 0,
+            "history": [],
+            "instance_logs": {
+                "frontend": [],
+                "backend": [],
+                "db": [],
+            },
+            "instances": {
+                "frontend": {"status": "unknown", "connection_count": 0},
+                "backend": {"status": "unknown", "connection_count": 0, "errors": 0, "discards": 0},
+                "db": {"status": "unknown", "connection_count": 0, "errors": 0, "discards": 0},
+            },
+        }
+    
+    # Transform database records into the same format as the current snapshot
+    history = []
+    for metric in metrics:
+        history.append({
+            "ts": metric.recorded_at.isoformat(),
+            "backend_connections": metric.backend_active_requests,
+            "backend_errors": metric.backend_errors_5xx,
+            "backend_discards": metric.backend_discards_4xx,
+            "backend_latency_ms": metric.backend_avg_latency_ms,
+            "backend_requests_total": metric.backend_requests_total,
+            "backend_memory_mb": metric.backend_memory_mb,
+            "frontend_connections": metric.frontend_active_connections,
+            "frontend_errors": 0,
+            "frontend_discards": 0,
+            "frontend_reading": metric.frontend_reading,
+            "frontend_writing": metric.frontend_writing,
+            "frontend_waiting": metric.frontend_waiting,
+            "db_connections": metric.db_connections,
+            "db_errors": metric.db_errors,
+            "db_discards": 0,
+            "db_threads_running": metric.db_threads_running,
+            "db_slow_queries": 0,
+            "db_bytes_received": 0,
+            "db_bytes_sent": 0,
+        })
+    
+    # Calculate instances from the latest metric in the range
+    latest_metric = metrics[-1]
+    
+    frontend_from_nginx = _fetch_frontend_nginx_status()
+    frontend_instance = {
+        "status": frontend_from_nginx.get("status", "ok"),
+        "cpu_percent": None,
+        "memory_mb": None,
+        "connection_count": frontend_from_nginx.get("connection_count", latest_metric.frontend_active_connections),
+        "reading": latest_metric.frontend_reading,
+        "writing": latest_metric.frontend_writing,
+        "waiting": latest_metric.frontend_waiting,
+        "accepts": frontend_from_nginx.get("accepts", 0),
+        "handled": frontend_from_nginx.get("handled", 0),
+        "requests_total": frontend_from_nginx.get("requests_total", 0),
+    }
+    
+    backend_instance = {
+        "status": "ok",
+        "cpu_percent": None,
+        "memory_mb": latest_metric.backend_memory_mb,
+        "connection_count": latest_metric.backend_active_requests,
+        "errors": latest_metric.backend_errors_5xx,
+        "discards": latest_metric.backend_discards_4xx,
+        "details": {
+            "requests_total": latest_metric.backend_requests_total,
+            "avg_latency_ms": latest_metric.backend_avg_latency_ms,
+            "db_pool_size": None,
+            "db_pool_checked_out": None,
+            "uptime_seconds": 0,
+            "recent_errors": [],
+        },
+    }
+    
+    db_instance = {
+        "status": "ok",
+        "cpu_percent": None,
+        "memory_mb": None,
+        "connection_count": latest_metric.db_connections,
+        "errors": latest_metric.db_errors,
+        "discards": 0,
+        "details": {
+            "threads_running": latest_metric.db_threads_running,
+            "questions_total": 0,
+            "uptime_seconds": 0,
+            "aborted_connects": 0,
+            "connection_errors_max_connections": 0,
+            "bytes_received": 0,
+            "bytes_sent": 0,
+            "slow_queries": 0,
+            "select_full_join": 0,
+            "tmp_disk_tables": 0,
+        },
+    }
+    
+    instance_logs = _derive_instance_logs(
+        history=history,
+        frontend_instance=frontend_instance,
+        backend_instance=backend_instance,
+        db_instance=db_instance,
+        alerts=[],
+        backend_recent_errors=[],
+    )
+
+    return {
+        "generated_at": datetime.utcnow().isoformat(),
+        "start_time": start.isoformat(),
+        "end_time": end.isoformat(),
+        "record_count": len(history),
+        "instances": {
+            "frontend": frontend_instance,
+            "backend": backend_instance,
+            "db": db_instance,
+        },
+        "alerts": [],
+        "history": history,
+        "instance_logs": instance_logs,
+        "notes": [
+            f"Data range: {len(history)} snapshots from historical database",
+            "Instance metrics derived from latest snapshot in range",
+        ],
+    }
+
+
+# ==================== Prometheus Metrics Endpoint ====================
+
+def _prom_line(name: str, help_text: str, metric_type: str, value, labels: Optional[Dict[str, str]] = None) -> str:
+    """Format a single Prometheus metric in text exposition format."""
+    if value is None:
+        return ""
+    label_str = ""
+    if labels:
+        parts = ','.join(f'{k}="{v}"' for k, v in labels.items())
+        label_str = f"{{{parts}}}"
+    return f"# HELP {name} {help_text}\n# TYPE {name} {metric_type}\n{name}{label_str} {float(value)}\n"
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics(db: Session = Depends(get_db)):
+    """
+    Prometheus-compatible metrics endpoint.
+    Scrape this with Prometheus; visualise in Grafana.
+    Note: restrict access to internal networks in production.
+    """
+    lines: List[str] = []
+
+    # ---- Backend ----
+    latency_samples = max(1, APP_INSIGHTS_STATE["backend_latency_samples"])
+    avg_latency_ms = APP_INSIGHTS_STATE["backend_latency_ms_total"] / latency_samples
+    uptime_seconds = int((datetime.utcnow() - APP_INSIGHTS_STATE["started_at"]).total_seconds())
+
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    backend_memory_mb = float(usage.ru_maxrss) / 1024.0
+    if backend_memory_mb > 1024 * 1024:
+        backend_memory_mb = float(usage.ru_maxrss) / (1024.0 * 1024.0)
+
+    pool_size = None
+    pool_checked_out = None
+    try:
+        if hasattr(engine.pool, "size"):
+            pool_size = int(engine.pool.size())
+        if hasattr(engine.pool, "checkedout"):
+            pool_checked_out = int(engine.pool.checkedout())
+    except Exception:
+        pass
+
+    lines.append(_prom_line("ledger_backend_active_requests", "Number of currently active HTTP requests", "gauge", APP_INSIGHTS_STATE["active_requests"]))
+    lines.append(_prom_line("ledger_backend_requests_total", "Total HTTP requests handled since startup", "counter", APP_INSIGHTS_STATE["total_requests"]))
+    lines.append(_prom_line("ledger_backend_errors_5xx_total", "Total 5xx server errors since startup", "counter", APP_INSIGHTS_STATE["errors_5xx"]))
+    lines.append(_prom_line("ledger_backend_discards_4xx_total", "Total 4xx client errors since startup", "counter", APP_INSIGHTS_STATE["discards_4xx"]))
+    lines.append(_prom_line("ledger_backend_latency_ms_avg", "Average backend request latency in milliseconds", "gauge", round(avg_latency_ms, 3)))
+    lines.append(_prom_line("ledger_backend_memory_mb", "Backend process RSS memory usage in megabytes", "gauge", round(backend_memory_mb, 2)))
+    lines.append(_prom_line("ledger_backend_uptime_seconds", "Backend process uptime in seconds", "counter", uptime_seconds))
+    if pool_size is not None:
+        lines.append(_prom_line("ledger_backend_db_pool_size", "SQLAlchemy connection pool size", "gauge", pool_size))
+    if pool_checked_out is not None:
+        lines.append(_prom_line("ledger_backend_db_pool_checked_out", "SQLAlchemy connections currently checked out", "gauge", pool_checked_out))
+
+    # ---- Frontend (nginx stub_status) ----
+    fe = _fetch_frontend_nginx_status()
+    fe_up = 1 if fe.get("status") == "ok" else 0
+    lines.append(_prom_line("ledger_frontend_up", "1 if nginx stub_status is reachable, 0 otherwise", "gauge", fe_up))
+    if fe_up:
+        lines.append(_prom_line("ledger_frontend_active_connections", "nginx active connections", "gauge", fe.get("connection_count")))
+        lines.append(_prom_line("ledger_frontend_reading", "nginx connections in reading state", "gauge", fe.get("reading")))
+        lines.append(_prom_line("ledger_frontend_writing", "nginx connections in writing state", "gauge", fe.get("writing")))
+        lines.append(_prom_line("ledger_frontend_waiting", "nginx connections in waiting (keep-alive) state", "gauge", fe.get("waiting")))
+        lines.append(_prom_line("ledger_frontend_accepts_total", "nginx total accepted connections", "counter", fe.get("accepts")))
+        lines.append(_prom_line("ledger_frontend_handled_total", "nginx total handled connections", "counter", fe.get("handled")))
+        lines.append(_prom_line("ledger_frontend_requests_total", "nginx total requests handled", "counter", fe.get("requests_total")))
+
+    # ---- Database (MySQL GLOBAL STATUS) ----
+    mysql_vars = [
+        "Threads_connected", "Threads_running",
+        "Aborted_clients", "Aborted_connects",
+        "Connection_errors_max_connections",
+        "Questions", "Uptime",
+        "Bytes_received", "Bytes_sent",
+        "Slow_queries", "Select_full_join", "Created_tmp_disk_tables",
+    ]
+    try:
+        mysql_stats = _get_mysql_status_map(db, mysql_vars)
+        db_errors = (
+            mysql_stats.get("Aborted_clients", 0)
+            + mysql_stats.get("Aborted_connects", 0)
+            + mysql_stats.get("Connection_errors_max_connections", 0)
+        )
+        lines.append(_prom_line("ledger_db_connections", "MySQL Threads_connected (active client connections)", "gauge", mysql_stats.get("Threads_connected")))
+        lines.append(_prom_line("ledger_db_threads_running", "MySQL Threads_running (threads actively executing queries)", "gauge", mysql_stats.get("Threads_running")))
+        lines.append(_prom_line("ledger_db_errors_total", "MySQL cumulative connection/client errors", "counter", db_errors))
+        lines.append(_prom_line("ledger_db_aborted_clients_total", "MySQL Aborted_clients count", "counter", mysql_stats.get("Aborted_clients")))
+        lines.append(_prom_line("ledger_db_aborted_connects_total", "MySQL Aborted_connects count", "counter", mysql_stats.get("Aborted_connects")))
+        lines.append(_prom_line("ledger_db_questions_total", "MySQL Questions (statements executed)", "counter", mysql_stats.get("Questions")))
+        lines.append(_prom_line("ledger_db_uptime_seconds", "MySQL server uptime in seconds", "counter", mysql_stats.get("Uptime")))
+        lines.append(_prom_line("ledger_db_bytes_received_total", "MySQL bytes received from clients", "counter", mysql_stats.get("Bytes_received")))
+        lines.append(_prom_line("ledger_db_bytes_sent_total", "MySQL bytes sent to clients", "counter", mysql_stats.get("Bytes_sent")))
+        lines.append(_prom_line("ledger_db_slow_queries_total", "MySQL slow queries count", "counter", mysql_stats.get("Slow_queries")))
+        lines.append(_prom_line("ledger_db_select_full_join_total", "MySQL full-join selects (no index on join col)", "counter", mysql_stats.get("Select_full_join")))
+        lines.append(_prom_line("ledger_db_tmp_disk_tables_total", "MySQL temporary tables created on disk", "counter", mysql_stats.get("Created_tmp_disk_tables")))
+    except Exception:
+        lines.append(_prom_line("ledger_db_up", "1 if DB metrics are available, 0 otherwise", "gauge", 0))
+
+    # ---- Alerts summary ----
+    # Re-derive alert counts from the current in-memory state (lightweight, no extra query)
+    alert_counts: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}
+    if APP_INSIGHTS_STATE["errors_5xx"] > 0:
+        alert_counts["high"] += 1
+    if APP_INSIGHTS_STATE["discards_4xx"] > 20:
+        alert_counts["medium"] += 1
+    lines.append("# HELP ledger_alerts_active Number of active alerts by severity\n# TYPE ledger_alerts_active gauge\n")
+    for severity, count in alert_counts.items():
+        lines.append(f'ledger_alerts_active{{severity="{severity}"}} {count}\n')
+
+    # ---- History snapshot count ----
+    lines.append(_prom_line("ledger_insights_history_snapshots", "Number of in-memory App Insights snapshots retained", "gauge", len(APP_INSIGHTS_HISTORY)))
+
+    body = "".join(line for line in lines if line)
+    return PlainTextResponse(content=body, media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 # ==================== Transaction Endpoints ====================
@@ -3271,6 +4091,46 @@ def delete_goal(
 
 # ==================== Investment Endpoints ====================
 
+def _ensure_goal_belongs_to_user(db: Session, user_id: int, goal_id: int) -> None:
+    """Validate that a referenced goal exists and belongs to the current user."""
+    goal = db.query(Goal).filter(Goal.user_id == user_id, Goal.id == goal_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Linked goal not found")
+
+
+def _normalize_investment_payload(
+    payload: dict,
+    db: Session,
+    user_id: int,
+    existing: Optional[Investment] = None,
+) -> dict:
+    """Normalize and validate investment payload consistently for create/update paths."""
+    normalized = dict(payload)
+
+    investment_type = (normalized.get("type") or (existing.type if existing else "") or "").strip().lower()
+    if "mutual fund" in investment_type and normalized.get("current_value") is None:
+        fallback_amount = normalized.get("amount_invested")
+        if fallback_amount is None and existing is not None:
+            fallback_amount = existing.amount_invested
+        normalized["current_value"] = fallback_amount
+
+    effective_goal_id = normalized.get("goal_id")
+    if effective_goal_id is None and existing is not None:
+        effective_goal_id = existing.goal_id
+
+    if effective_goal_id is None:
+        raise HTTPException(status_code=400, detail="goal_id is required for investments")
+
+    try:
+        effective_goal_id = int(effective_goal_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="goal_id must be a valid integer")
+
+    _ensure_goal_belongs_to_user(db, user_id, effective_goal_id)
+    normalized["goal_id"] = effective_goal_id
+
+    return normalized
+
 @app.get("/api/investments", response_model=List[InvestmentSchema])
 def get_investments(
     current_user: User = Depends(get_current_active_user),
@@ -3288,10 +4148,11 @@ def create_investment(
     db: Session = Depends(get_db)
 ):
     """Create a new investment record"""
-    payload = investment.dict()
-    investment_type = (payload.get("type") or "").strip().lower()
-    if "mutual fund" in investment_type and payload.get("current_value") is None:
-        payload["current_value"] = payload.get("amount_invested")
+    payload = _normalize_investment_payload(
+        investment.dict(),
+        db=db,
+        user_id=current_user.id,
+    )
 
     db_investment = Investment(**payload, user_id=current_user.id)
     db.add(db_investment)
@@ -3323,10 +4184,12 @@ def update_investment(
     if not db_investment:
         raise HTTPException(status_code=404, detail="Investment not found")
 
-    update_data = investment_update.dict(exclude_unset=True)
-    effective_type = (update_data.get("type") or db_investment.type or "").strip().lower()
-    if "mutual fund" in effective_type and update_data.get("current_value") is None:
-        update_data["current_value"] = update_data.get("amount_invested", db_investment.amount_invested)
+    update_data = _normalize_investment_payload(
+        investment_update.dict(exclude_unset=True),
+        db=db,
+        user_id=current_user.id,
+        existing=db_investment,
+    )
 
     for field, value in update_data.items():
         setattr(db_investment, field, value)
@@ -3756,6 +4619,327 @@ def get_dashboard_stats(
         budget_remaining=round(budget_remaining, 2),
         budgets_over_limit=budgets_over_limit
     )
+
+
+@app.get("/api/financial-insights")
+def get_financial_insights(
+    months: Optional[int] = 6,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Financial metrics and insights for the authenticated user.
+
+    Returns income/expense trend, savings rate, net worth breakdown,
+    budget utilisation, top spending categories, investment summary,
+    and goal progress for the last `months` calendar months (default 6).
+    """
+    now = datetime.utcnow()
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # ── Current month ─────────────────────────────────────────────────────────
+    cur_tx = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= start_of_month,
+    ).all()
+    cur_income = sum(t.amount for t in cur_tx if t.type == "income")
+    cur_expenses = sum(t.amount for t in cur_tx if t.type == "expense")
+    cur_net = cur_income - cur_expenses
+    savings_rate = round(cur_net / cur_income * 100, 2) if cur_income > 0 else 0.0
+
+    # ── Previous month ────────────────────────────────────────────────────────
+    prev_start = (start_of_month - timedelta(days=1)).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    prev_tx = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= prev_start,
+        Transaction.date < start_of_month,
+    ).all()
+    prev_income = sum(t.amount for t in prev_tx if t.type == "income")
+    prev_expenses = sum(t.amount for t in prev_tx if t.type == "expense")
+
+    # ── Monthly trend (last N months) ─────────────────────────────────────────
+    trend = []
+    for i in range(max(1, months) - 1, -1, -1):
+        # Approximate month start by stepping back 28-day chunks and normalising
+        m_start = (now.replace(day=1) - timedelta(days=i * 28)).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        # Month end = first day of the following month
+        next_month_day = m_start.replace(day=28) + timedelta(days=4)
+        m_end = next_month_day.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        m_tx = db.query(Transaction).filter(
+            Transaction.user_id == current_user.id,
+            Transaction.date >= m_start,
+            Transaction.date < m_end,
+        ).all()
+        m_income = sum(t.amount for t in m_tx if t.type == "income")
+        m_expenses = sum(t.amount for t in m_tx if t.type == "expense")
+        m_net = m_income - m_expenses
+        trend.append({
+            "month": m_start.strftime("%b %Y"),
+            "income": round(m_income, 2),
+            "expenses": round(m_expenses, 2),
+            "net": round(m_net, 2),
+            "savings_rate_pct": round(m_net / m_income * 100, 2) if m_income > 0 else 0.0,
+        })
+
+    # ── Top spending categories (current month) ───────────────────────────────
+    category_spend: Dict[str, float] = {}
+    for t in cur_tx:
+        if t.type == "expense":
+            key = t.category or "Uncategorized"
+            category_spend[key] = category_spend.get(key, 0.0) + t.amount
+    top_categories = sorted(
+        [{"category": k, "amount": round(v, 2)} for k, v in category_spend.items()],
+        key=lambda x: x["amount"],
+        reverse=True,
+    )[:10]
+
+    # ── Budget utilisation ────────────────────────────────────────────────────
+    budgets = db.query(Budget).filter(Budget.user_id == current_user.id).all()
+    budget_items = []
+    total_budget_limit = 0.0
+    total_budget_spent = 0.0
+    over_budget_count = 0
+    start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    for b in budgets:
+        period = (getattr(b, "period", "monthly") or "monthly").lower()
+        since = start_of_year if period == "yearly" else start_of_month
+        spent = sum(
+            t.amount
+            for t in db.query(Transaction).filter(
+                Transaction.user_id == current_user.id,
+                Transaction.type == "expense",
+                Transaction.category == b.category,
+                Transaction.date >= since,
+            ).all()
+        )
+        pct = round(spent / b.limit * 100, 1) if b.limit > 0 else 0.0
+        over = spent > b.limit
+        budget_items.append({
+            "category": b.category,
+            "limit": round(b.limit, 2),
+            "spent": round(spent, 2),
+            "remaining": round(b.limit - spent, 2),
+            "utilization_pct": pct,
+            "over_budget": over,
+        })
+        total_budget_limit += b.limit
+        total_budget_spent += spent
+        if over:
+            over_budget_count += 1
+
+    # ── Investments ───────────────────────────────────────────────────────────
+    investments = db.query(Investment).filter(Investment.user_id == current_user.id).all()
+    total_invested = sum(float(i.amount_invested or 0) for i in investments)
+    total_current_value = sum(float(i.current_value or i.amount_invested or 0) for i in investments)
+    inv_by_type: Dict[str, float] = {}
+    for i in investments:
+        itype = i.type or "Other"
+        inv_by_type[itype] = inv_by_type.get(itype, 0.0) + float(i.amount_invested or 0)
+
+    # ── Assets & Liabilities ──────────────────────────────────────────────────
+    assets = db.query(Asset).filter(Asset.user_id == current_user.id).all()
+    total_assets = sum(float(a.value or 0) for a in assets)
+    liabilities = db.query(Liability).filter(Liability.user_id == current_user.id).all()
+    total_liabilities = sum(float(l.outstanding or 0) for l in liabilities)
+    net_worth = total_assets + total_current_value - total_liabilities
+
+    # ── Goals ─────────────────────────────────────────────────────────────────
+    goals = db.query(Goal).filter(Goal.user_id == current_user.id).all()
+    goal_items = []
+    for g in goals:
+        target = float(g.target or 0)
+        current = float(g.current or 0)
+        goal_items.append({
+            "name": g.name,
+            "target": round(target, 2),
+            "current": round(current, 2),
+            "progress_pct": round(current / target * 100, 1) if target > 0 else 0.0,
+            "deadline": g.target_date.isoformat() if g.target_date else None,
+        })
+
+    # ── Recommendations ───────────────────────────────────────────────────────
+    recommendations = []
+    if savings_rate < 20:
+        recommendations.append({
+            "type": "warning",
+            "message": f"Savings rate is {savings_rate:.1f}%. Target at least 20% of income.",
+        })
+    if over_budget_count > 0:
+        recommendations.append({
+            "type": "alert",
+            "message": f"{over_budget_count} budget(s) exceeded this month.",
+        })
+    if cur_expenses > cur_income and cur_income > 0:
+        recommendations.append({
+            "type": "alert",
+            "message": "Expenses exceed income this month — you are running a deficit.",
+        })
+    if net_worth < 0:
+        recommendations.append({
+            "type": "alert",
+            "message": "Net worth is negative. Focus on reducing outstanding liabilities.",
+        })
+    if total_invested == 0:
+        recommendations.append({
+            "type": "info",
+            "message": "No investments tracked yet. Consider starting an SIP or building a portfolio.",
+        })
+    if not recommendations:
+        recommendations.append({
+            "type": "ok",
+            "message": "Finances look healthy this month. Keep it up!",
+        })
+
+    return {
+        "generated_at": now.isoformat(),
+        "period": {
+            "month": now.strftime("%B %Y"),
+            "months_included": months,
+            "start": start_of_month.isoformat(),
+        },
+        "summary": {
+            "current_month_income": round(cur_income, 2),
+            "current_month_expenses": round(cur_expenses, 2),
+            "current_month_net": round(cur_net, 2),
+            "savings_rate_pct": savings_rate,
+            "prev_month_income": round(prev_income, 2),
+            "prev_month_expenses": round(prev_expenses, 2),
+            "income_change_pct": round((cur_income - prev_income) / prev_income * 100, 2) if prev_income > 0 else None,
+            "expenses_change_pct": round((cur_expenses - prev_expenses) / prev_expenses * 100, 2) if prev_expenses > 0 else None,
+        },
+        "net_worth": {
+            "total_assets": round(total_assets, 2),
+            "total_liabilities": round(total_liabilities, 2),
+            "net_worth": round(net_worth, 2),
+            "total_invested": round(total_invested, 2),
+            "total_current_value": round(total_current_value, 2),
+            "unrealised_gain": round(total_current_value - total_invested, 2),
+        },
+        "top_categories": top_categories,
+        "monthly_trend": trend,
+        "budget_utilization": {
+            "total_limit": round(total_budget_limit, 2),
+            "total_spent": round(total_budget_spent, 2),
+            "total_remaining": round(total_budget_limit - total_budget_spent, 2),
+            "over_budget_count": over_budget_count,
+            "items": budget_items,
+        },
+        "investments": {
+            "total_invested": round(total_invested, 2),
+            "total_current_value": round(total_current_value, 2),
+            "unrealised_gain": round(total_current_value - total_invested, 2),
+            "by_type": {k: round(v, 2) for k, v in inv_by_type.items()},
+            "count": len(investments),
+            "sip_count": sum(1 for i in investments if i.monthly_sip),
+        },
+        "goals": goal_items,
+        "recommendations": recommendations,
+    }
+
+
+# ==================== App Insights Historical Recording ====================
+
+insights_recording_thread = None
+insights_recording_active = False
+
+
+def record_insights_snapshot():
+    """Record a snapshot of current app insights metrics to the database."""
+    try:
+        db = next(get_db())
+        
+        # Get current metrics
+        latency_samples = max(1, APP_INSIGHTS_STATE["backend_latency_samples"])
+        avg_latency_ms = APP_INSIGHTS_STATE["backend_latency_ms_total"] / latency_samples
+        
+        # Get frontend nginx status
+        frontend_status = _fetch_frontend_nginx_status()
+        
+        # Get DB metrics
+        mysql_vars = [
+            "Threads_connected", "Threads_running", "Aborted_clients",
+            "Aborted_connects", "Connection_errors_max_connections", "Questions"
+        ]
+        mysql_stats = _get_mysql_status_map(db, mysql_vars)
+        db_errors = (
+            mysql_stats.get("Aborted_clients", 0) +
+            mysql_stats.get("Aborted_connects", 0) +
+            mysql_stats.get("Connection_errors_max_connections", 0)
+        )
+        
+        # Create and save the metric record
+        metric = AppInsightsMetric(
+            recorded_at=datetime.utcnow(),
+            # Backend metrics
+            backend_active_requests=APP_INSIGHTS_STATE["active_requests"],
+            backend_errors_5xx=APP_INSIGHTS_STATE["errors_5xx"],
+            backend_discards_4xx=APP_INSIGHTS_STATE["discards_4xx"],
+            backend_avg_latency_ms=round(avg_latency_ms, 2),
+            backend_requests_total=APP_INSIGHTS_STATE["total_requests"],
+            backend_memory_mb=0.0,  # Will update below
+            # Frontend metrics
+            frontend_active_connections=frontend_status.get("connection_count", 0),
+            frontend_reading=frontend_status.get("reading", 0),
+            frontend_writing=frontend_status.get("writing", 0),
+            frontend_waiting=frontend_status.get("waiting", 0),
+            frontend_accepts=frontend_status.get("accepts", 0),
+            frontend_handled=frontend_status.get("handled", 0),
+            frontend_requests_total=frontend_status.get("requests_total", 0),
+            # DB metrics
+            db_connections=mysql_stats.get("Threads_connected", 0),
+            db_threads_running=mysql_stats.get("Threads_running", 0),
+            db_errors=db_errors,
+            db_total_queries=mysql_stats.get("Questions", 0),
+        )
+        
+        # Calculate backend memory
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        backend_memory_mb = float(usage.ru_maxrss) / 1024.0
+        if backend_memory_mb > 1024 * 1024:
+            backend_memory_mb = float(usage.ru_maxrss) / (1024.0 * 1024.0)
+        metric.backend_memory_mb = round(backend_memory_mb, 2)
+        
+        db.add(metric)
+        db.commit()
+        db.close()
+    except Exception as e:
+        print(f"Error recording insights snapshot: {e}")
+
+
+def background_insights_recorder():
+    """Background task that records insights metrics every 30 seconds."""
+    global insights_recording_active
+    while insights_recording_active:
+        try:
+            record_insights_snapshot()
+        except Exception as e:
+            print(f"Background insights recording error: {e}")
+        time.sleep(30)  # Record every 30 seconds
+
+
+@app.on_event("startup")
+def startup_insights_recording():
+    """Start the background insights recording task on app startup."""
+    ensure_superadmin_account()
+    global insights_recording_thread, insights_recording_active
+    if not insights_recording_active:
+        insights_recording_active = True
+        insights_recording_thread = threading.Thread(target=background_insights_recorder, daemon=True)
+        insights_recording_thread.start()
+        print("App Insights historical recording started (30s interval)")
+
+
+@app.on_event("shutdown")
+def shutdown_insights_recording():
+    """Stop the background insights recording task on app shutdown."""
+    global insights_recording_active
+    insights_recording_active = False
+    print("App Insights historical recording stopped")
 
 
 # ==================== Health Check ====================

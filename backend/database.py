@@ -193,6 +193,60 @@ def ensure_user_role_column():
             print(f"[database] Warning: could not ensure role column in users: {e}")
 
 
+def ensure_user_permissions_column():
+    """Ensure permissions_json column exists on users table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(users)')).fetchall()]
+                if 'permissions_json' not in columns:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN permissions_json TEXT'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM users LIKE 'permissions_json'")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN permissions_json TEXT NULL'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='permissions_json' ")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN permissions_json TEXT'))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure permissions_json column in users: {e}")
+
+
+def ensure_user_federation_columns():
+    """Ensure identity_provider and external_subject columns exist on users table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(users)')).fetchall()]
+                if 'identity_provider' not in columns:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN identity_provider VARCHAR(64)'))
+                if 'external_subject' not in columns:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN external_subject VARCHAR(255)'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                provider_exists = conn.execute(text("SHOW COLUMNS FROM users LIKE 'identity_provider' ")).fetchone()
+                if not provider_exists:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN identity_provider VARCHAR(64) NULL'))
+                subject_exists = conn.execute(text("SHOW COLUMNS FROM users LIKE 'external_subject' ")).fetchone()
+                if not subject_exists:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN external_subject VARCHAR(255) NULL'))
+            elif engine.dialect.name == 'postgresql':
+                provider_exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='identity_provider' ")).fetchone()
+                if not provider_exists:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN identity_provider VARCHAR(64)'))
+                subject_exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='external_subject' ")).fetchone()
+                if not subject_exists:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN external_subject VARCHAR(255)'))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure federation columns in users: {e}")
+
+
 def ensure_bootstrap_admin():
     """Ensure there is at least one admin user by promoting the oldest account if needed."""
     from sqlalchemy import text
@@ -350,6 +404,43 @@ def ensure_liability_loan_columns():
             print(f"[database] Warning: could not ensure loan columns in liabilities: {e}")
 
 
+def ensure_liability_credit_card_columns():
+    """Ensure credit card / tax tracking columns exist on liabilities table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(liabilities)')).fetchall()]
+                if 'liability_type' not in columns:
+                    conn.execute(text("ALTER TABLE liabilities ADD COLUMN liability_type VARCHAR(50) DEFAULT 'general'"))
+                if 'credit_limit' not in columns:
+                    conn.execute(text('ALTER TABLE liabilities ADD COLUMN credit_limit FLOAT'))
+                if 'is_paid_off' not in columns:
+                    conn.execute(text('ALTER TABLE liabilities ADD COLUMN is_paid_off BOOLEAN DEFAULT 0'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                for column_name, ddl in [
+                    ('liability_type', "ALTER TABLE liabilities ADD COLUMN liability_type VARCHAR(50) NOT NULL DEFAULT 'general'"),
+                    ('credit_limit', 'ALTER TABLE liabilities ADD COLUMN credit_limit DOUBLE NULL'),
+                    ('is_paid_off', 'ALTER TABLE liabilities ADD COLUMN is_paid_off BOOLEAN NOT NULL DEFAULT FALSE'),
+                ]:
+                    exists = conn.execute(text(f"SHOW COLUMNS FROM liabilities LIKE '{column_name}'")).fetchone()
+                    if not exists:
+                        conn.execute(text(ddl))
+            elif engine.dialect.name == 'postgresql':
+                for column_name, ddl in [
+                    ('liability_type', "ALTER TABLE liabilities ADD COLUMN liability_type VARCHAR(50) DEFAULT 'general'"),
+                    ('credit_limit', 'ALTER TABLE liabilities ADD COLUMN credit_limit DOUBLE PRECISION'),
+                    ('is_paid_off', 'ALTER TABLE liabilities ADD COLUMN is_paid_off BOOLEAN DEFAULT FALSE'),
+                ]:
+                    exists = conn.execute(text(f"SELECT column_name FROM information_schema.columns WHERE table_name='liabilities' AND column_name='{column_name}'")).fetchone()
+                    if not exists:
+                        conn.execute(text(ddl))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure credit card columns in liabilities: {e}")
+
+
 def ensure_integration_oauth_columns():
     """Ensure OAuth support columns exist on integrations table."""
     from sqlalchemy import text
@@ -449,6 +540,29 @@ def ensure_investment_start_date_column():
             print(f"[database] Warning: could not ensure start_date column in investments: {e}")
 
 
+def ensure_investment_goal_id_column():
+    """Ensure goal_id column exists on investments table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(investments)')).fetchall()]
+                if 'goal_id' not in columns:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN goal_id INTEGER'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM investments LIKE 'goal_id'")) .fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN goal_id INTEGER NULL'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='investments' AND column_name='goal_id'")) .fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE investments ADD COLUMN goal_id INTEGER'))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure goal_id column in investments: {e}")
+
+
 def ensure_budget_period_column():
     """Ensure period column exists on budgets table."""
     from sqlalchemy import text
@@ -546,16 +660,20 @@ def init_db():
     from models import Base
     Base.metadata.create_all(bind=engine)
     ensure_user_role_column()
+    ensure_user_permissions_column()
+    ensure_user_federation_columns()
     ensure_bootstrap_admin()
     ensure_asset_balance_column()
     ensure_asset_income_column()
     ensure_asset_emergency_fund_column()
     ensure_asset_loan_emi_linked_column()
     ensure_liability_loan_columns()
+    ensure_liability_credit_card_columns()
     ensure_integration_oauth_columns()
     ensure_investment_monthly_sip_column()
     ensure_investment_annual_growth_rate_column()
     ensure_investment_start_date_column()
+    ensure_investment_goal_id_column()
     ensure_transaction_recurring_column()
     ensure_budget_period_column()
     ensure_budget_recurring_column()

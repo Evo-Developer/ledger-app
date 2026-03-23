@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Knowledge Base · Ledger App</title>
+<style>
+/* ── Reset & tokens ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #0d1117;
+  --surface:     #161b22;
+  --surface2:    #1c2128;
+  --border:      #30363d;
+  --text-pri:    #e6edf3;
+  --text-sec:    #8b949e;
+  --text-muted:  #6e7681;
+  --primary:     #58a6ff;
+  --primary-dim: #1f4068;
+  --green:       #3fb950;
+  --green-dim:   #12261e;
+  --yellow:      #d29922;
+  --yellow-dim:  #2d2200;
+  --red:         #f85149;
+  --red-dim:     #2d1517;
+  --purple:      #bc8cff;
+  --purple-dim:  #1e1135;
+  --font:        -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --code-font:   'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --radius:      8px;
+  --sidebar-w:   260px;
+  --header-h:    56px;
+}
+[data-theme="light"] {
+  --bg:          #f6f8fa;
+  --surface:     #ffffff;
+  --surface2:    #f0f2f4;
+  --border:      #d0d7de;
+  --text-pri:    #1f2328;
+  --text-sec:    #57606a;
+  --text-muted:  #8c959f;
+  --primary:     #0969da;
+  --primary-dim: #dbeafe;
+  --green-dim:   #d1fadf;
+  --yellow-dim:  #fef3c7;
+  --red-dim:     #fee2e2;
+  --purple-dim:  #ede9fe;
+}
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text-pri);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Top header ─────────────────────────────────────────────────────────── */
+.kb-header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: var(--header-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px; padding: 0 20px;
+}
+.kb-header-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+.kb-header-brand-icon { font-size: 20px; }
+.kb-header-brand-text { font-weight: 700; font-size: 15px; color: var(--text-pri); }
+.kb-header-brand-tag { font-size: 10px; background: var(--primary-dim); color: var(--primary); border-radius: 4px; padding: 1px 6px; font-weight: 600; letter-spacing: 0.05em; }
+.kb-search-wrap {
+  flex: 1; max-width: 560px; position: relative;
+}
+.kb-search {
+  width: 100%; padding: 8px 36px 8px 14px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-pri); font-size: 13px;
+  outline: none; transition: border-color .15s;
+}
+.kb-search:focus { border-color: var(--primary); }
+.kb-search-icon { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; font-size: 14px; }
+.kb-search-count { font-size: 11px; color: var(--text-muted); position: absolute; right: 38px; top: 50%; transform: translateY(-50%); }
+.kb-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+.kb-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-pri); font-size: 12px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; transition: background .15s; }
+.kb-btn:hover { background: var(--border); }
+.kb-btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.kb-btn-primary:hover { opacity: .88; }
+#authGate { display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; gap: 20px; }
+.auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 40px; max-width: 380px; width: 100%; text-align: center; }
+.auth-card h2 { font-size: 18px; margin-bottom: 8px; }
+.auth-card p { color: var(--text-sec); font-size: 13px; margin-bottom: 20px; }
+.auth-input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text-pri); font-size: 14px; outline: none; margin-bottom: 12px; }
+.auth-input:focus { border-color: var(--primary); }
+.auth-error { color: var(--red); font-size: 12px; min-height: 18px; margin-bottom: 8px; }
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+#mainLayout { display: flex; margin-top: var(--header-h); min-height: calc(100vh - var(--header-h)); }
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+.kb-sidebar {
+  width: var(--sidebar-w); flex-shrink: 0;
+  background: var(--surface); border-right: 1px solid var(--border);
+  position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h));
+  overflow-y: auto; padding: 16px 12px;
+}
+.kb-sidebar-section { margin-bottom: 20px; }
+.kb-sidebar-section-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); padding: 0 8px; margin-bottom: 6px; }
+.kb-nav-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--text-sec);
+  transition: background .1s, color .1s; border: none; background: transparent; width: 100%; text-align: left;
+}
+.kb-nav-item:hover { background: var(--surface2); color: var(--text-pri); }
+.kb-nav-item.active { background: var(--primary-dim); color: var(--primary); font-weight: 600; }
+.kb-nav-badge { margin-left: auto; font-size: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; color: var(--text-muted); }
+.kb-nav-item.active .kb-nav-badge { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); }
+
+/* ── Main content ───────────────────────────────────────────────────────── */
+.kb-main { flex: 1; padding: 24px 32px; max-width: 960px; }
+
+/* ── Toolbar ────────────────────────────────────────────────────────────── */
+.kb-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.kb-toolbar-title { font-size: 20px; font-weight: 700; flex: 1; }
+.kb-filter-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.kb-tag-filter { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-sec); font-size: 11px; cursor: pointer; transition: all .15s; }
+.kb-tag-filter.active, .kb-tag-filter:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-dim); }
+
+/* ── Stats strip ────────────────────────────────────────────────────────── */
+.kb-stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.kb-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 18px; flex: 1; min-width: 130px; }
+.kb-stat-label { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+.kb-stat-value { font-size: 22px; font-weight: 700; }
+
+/* ── Doc cards ──────────────────────────────────────────────────────────── */
+.kb-section-header { display: flex; align-items: center; gap: 10px; margin: 28px 0 14px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.kb-section-icon { font-size: 18px; }
+.kb-section-title { font-size: 16px; font-weight: 700; }
+.kb-section-count { font-size: 11px; background: var(--surface2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; color: var(--text-muted); }
+
+.doc-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px;
+  margin-bottom: 12px; transition: border-color .15s;
+  border-left: 3px solid transparent;
+}
+.doc-card:hover { border-color: var(--primary); }
+.doc-card.priority-critical { border-left-color: var(--red); }
+.doc-card.priority-high     { border-left-color: var(--yellow); }
+.doc-card.priority-medium   { border-left-color: var(--primary); }
+.doc-card.priority-info     { border-left-color: var(--green); }
+
+.doc-card-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.doc-card-title { font-size: 14px; font-weight: 600; flex: 1; }
+.doc-card-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.doc-badge { font-size: 10px; font-weight: 600; border-radius: 4px; padding: 1px 7px; border: 1px solid transparent; }
+.doc-badge.critical { background: var(--red-dim); color: var(--red); border-color: rgba(248,81,73,.3); }
+.doc-badge.high     { background: var(--yellow-dim); color: var(--yellow); border-color: rgba(210,153,34,.3); }
+.doc-badge.medium   { background: var(--primary-dim); color: var(--primary); border-color: rgba(88,166,255,.3); }
+.doc-badge.info     { background: var(--green-dim); color: var(--green); border-color: rgba(63,185,80,.3); }
+.doc-badge.tag      { background: var(--surface2); color: var(--text-sec); border-color: var(--border); font-weight: 400; }
+.doc-badge.new      { background: var(--purple-dim); color: var(--purple); border-color: rgba(188,140,255,.3); }
+
+.doc-card-body { color: var(--text-sec); font-size: 13px; line-height: 1.65; }
+.doc-card-body p { margin-bottom: 6px; }
+.doc-card-body p:last-child { margin-bottom: 0; }
+.doc-card-body ul { padding-left: 18px; margin: 6px 0; }
+.doc-card-body ul li { margin-bottom: 3px; }
+.doc-card-footer { margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 8px; }
+.doc-card-date { font-size: 11px; color: var(--text-muted); }
+
+pre.code-block {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 12px; font-family: var(--code-font); font-size: 11.5px;
+  overflow-x: auto; margin: 8px 0; color: var(--text-pri); position: relative;
+}
+.copy-btn {
+  position: absolute; top: 6px; right: 8px; padding: 2px 8px;
+  font-size: 10px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--surface); color: var(--text-muted); cursor: pointer;
+  transition: all .15s;
+}
+.copy-btn:hover { color: var(--text-pri); background: var(--border); }
+
+/* ── Timeline ───────────────────────────────────────────────────────────── */
+.timeline { position: relative; padding-left: 28px; }
+.timeline::before { content: ''; position: absolute; left: 9px; top: 0; bottom: 0; width: 2px; background: var(--border); border-radius: 2px; }
+.tl-item { position: relative; margin-bottom: 20px; }
+.tl-dot { position: absolute; left: -24px; top: 4px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--surface); background: var(--primary); }
+.tl-dot.green { background: var(--green); }
+.tl-dot.yellow { background: var(--yellow); }
+.tl-dot.red { background: var(--red); }
+.tl-date { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+.tl-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.tl-desc { font-size: 12px; color: var(--text-sec); }
+
+/* ── Empty / no-results ─────────────────────────────────────────────────── */
+.kb-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.kb-empty-icon { font-size: 36px; margin-bottom: 12px; }
+.kb-empty-msg { font-size: 14px; }
+
+/* ── Theme toggle ───────────────────────────────────────────────────────── */
+#themeBtn { font-size: 16px; padding: 6px 10px; }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .kb-sidebar { display: none; }
+  .kb-main { padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Auth gate ─────────────────────────────────────────────────────────── -->
+<div id="authGate" style="display:none;">
+  <div class="auth-card">
+    <div style="font-size:36px; margin-bottom:12px;">🔐</div>
+    <h2>Admin Knowledge Base</h2>
+    <p>Sign in with your admin credentials to view the documentation portal.</p>
+    <div class="auth-error" id="authError"></div>
+    <input class="auth-input" id="authUsernameInput" type="text" placeholder="Admin username" autocomplete="username" />
+    <input class="auth-input" id="authPasswordInput" type="password" placeholder="Admin password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){loginWithCredentials();}" />
+    <button class="kb-btn kb-btn-primary" style="width:100%; justify-content:center;" onclick="loginWithCredentials()">Sign In</button>
+    <div style="margin-top:12px;">
+      <a href="/index.html" style="font-size:12px; color:var(--text-muted);">← Back to login</a>
+    </div>
+  </div>
+</div>
+
+<!-- ── Header ────────────────────────────────────────────────────────────── -->
+<header class="kb-header" id="kbHeader" style="display:none;">
+  <a class="kb-header-brand" href="/app.html?tab=settings">
+    <span class="kb-header-brand-icon">📚</span>
+    <span class="kb-header-brand-text">Admin Knowledge Base</span>
+    <span class="kb-header-brand-tag">ADMIN</span>
+  </a>
+  <div class="kb-search-wrap">
+    <input class="kb-search" id="kbSearch" type="search" placeholder="Search guides, tips, configs, APIs…" oninput="doSearch()" autocomplete="off" />
+    <span class="kb-search-icon">🔍</span>
+    <span class="kb-search-count" id="searchCount" style="display:none;"></span>
+  </div>
+  <div class="kb-header-actions">
+    <button class="kb-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+    <a href="/app.html?tab=settings" class="kb-btn">⚙️ Settings</a>
+    <a href="/app.html" class="kb-btn kb-btn-primary">← App</a>
+  </div>
+</header>
+
+<!-- ── Main layout ───────────────────────────────────────────────────────── -->
+<div id="mainLayout" style="display:none;">
+  <!-- Sidebar -->
+  <nav class="kb-sidebar" id="kbSidebar">
+    <div class="kb-sidebar-section">
+      <div class="kb-sidebar-section-title">Views</div>
+      <button class="kb-nav-item active" onclick="setView('all', this)" data-view="all">
+        📄 All Entries <span class="kb-nav-badge" id="navBadge-all">0</span>
+      </button>
+      <button class="kb-nav-item" onclick="setView('timeline', this)" data-view="timeline">
+        🕐 Changelog
+      </button>
+    </div>
+    <div class="kb-sidebar-section">
+      <div class="kb-sidebar-section-title">Categories</div>
+      <!-- generated by JS -->
+      <div id="catNavItems"></div>
+    </div>
+    <div class="kb-sidebar-section">
+      <div class="kb-sidebar-section-title">Priority</div>
+      <button class="kb-nav-item" onclick="filterPriority('critical', this)">🔴 Critical <span class="kb-nav-badge" id="pBadge-critical">0</span></button>
+      <button class="kb-nav-item" onclick="filterPriority('high', this)">🟡 High <span class="kb-nav-badge" id="pBadge-high">0</span></button>
+      <button class="kb-nav-item" onclick="filterPriority('medium', this)">🔵 Medium <span class="kb-nav-badge" id="pBadge-medium">0</span></button>
+      <button class="kb-nav-item" onclick="filterPriority('info', this)">🟢 Info <span class="kb-nav-badge" id="pBadge-info">0</span></button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="kb-main" id="kbMain">
+    <!-- Stats -->
+    <div class="kb-stats" id="kbStats"></div>
+    <!-- Toolbar -->
+    <div class="kb-toolbar">
+      <div class="kb-toolbar-title" id="viewTitle">All Documentation Entries</div>
+    </div>
+    <!-- Content area -->
+    <div id="kbContent"></div>
+  </main>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+// DATA — All admin documentation entries
+// ════════════════════════════════════════════════════════════════════════════
+const KB_DATA = [
+  // ── ARCHITECTURE ──────────────────────────────────────────────────────────
+  {
+    id: 1, cat: 'Architecture', priority: 'critical', date: '2026-03-01',
+    title: 'Service Topology Overview',
+    tags: ['docker', 'services', 'networking'],
+    body: `<p>The Ledger App is composed of 5 containerised services wired by a single Docker Compose network (<code>ledger_network</code>):</p>
+<ul>
+  <li><strong>db</strong> — MySQL 8.0, port 3306; health-checked before backend starts</li>
+  <li><strong>backend</strong> — FastAPI (uvicorn), port 8000; serves all <code>/api/</code> routes</li>
+  <li><strong>frontend</strong> — nginx, port 80 (HTTP→HTTPS redirect) + port 443 (TLS)</li>
+  <li><strong>prometheus</strong> — prom/prometheus v2.51.2, port 9090; scrapes backend:8000/metrics every 15 s</li>
+  <li><strong>grafana</strong> — Grafana 10.4.2, port 3000; auto-provisioned datasource + dashboard</li>
+</ul>
+<p>All services share <code>ledger_network</code> (bridge driver). Prometheus and Grafana use named volumes for data persistence.</p>`,
+    code: `# Start all services
+docker compose up -d
+
+# Service URLs (local)
+Frontend: https://localhost
+Backend API: http://localhost:8000
+Prometheus: http://localhost:9090
+Grafana: http://localhost:3000  (admin / admin)`
+  },
+  {
+    id: 2, cat: 'Architecture', priority: 'high', date: '2026-03-01',
+    title: 'Key Files Reference',
+    tags: ['files', 'structure'],
+    body: `<ul>
+  <li><code>backend/main.py</code> — FastAPI app, all API endpoints, App Insights state machine</li>
+  <li><code>backend/models.py</code> — SQLAlchemy models (User, Transaction, Asset, Budget, Goal, Investment, Liability, AppInsightsMetric…)</li>
+  <li><code>backend/auth.py</code> — JWT auth, rate limiting, <code>require_admin</code> / <code>require_write_access</code> dependencies</li>
+  <li><code>backend/security_config.py</code> — Security settings centralised here</li>
+  <li><code>backend/schemas.py</code> — Pydantic request/response models</li>
+  <li><code>frontend/app.html</code> — Single-file SPA (~16 000 lines); all UI including admin panel</li>
+  <li><code>frontend/index.html</code> / <code>login.html</code> — Login pages with User/Admin mode switch</li>
+  <li><code>frontend/nginx.conf</code> — nginx with TLS, security headers, stub_status, API proxy</li>
+  <li><code>docker-compose.yml</code> — All service definitions</li>
+  <li><code>prometheus.yml</code> — Scrape config</li>
+  <li><code>grafana/provisioning/</code> — Auto-provisioned datasource + Ledger App Insights dashboard</li>
+</ul>`,
+  },
+  // ── API ENDPOINTS ─────────────────────────────────────────────────────────
+  {
+    id: 10, cat: 'API Reference', priority: 'critical', date: '2026-03-10',
+    title: 'Admin App Insights Endpoints',
+    tags: ['api', 'monitoring', 'admin'],
+    body: `<p>Both endpoints require the <code>require_admin</code> JWT dependency.</p>`,
+    code: `GET /api/admin/app-insights
+# Returns current snapshot: frontend + backend + DB metrics, alerts,
+# in-memory history (last 60 snapshots), per-instance log streams.
+
+GET /api/admin/app-insights/history?hours=24
+# Query params: hours, days, weeks, months, start_time, end_time
+# Returns metrics persisted to DB (AppInsightsMetric table).
+# Default: last 24 hours.`
+  },
+  {
+    id: 11, cat: 'API Reference', priority: 'critical', date: '2026-03-20',
+    title: 'Prometheus Metrics Endpoint',
+    tags: ['api', 'prometheus', 'monitoring'],
+    body: `<p><strong>⚠️ Security:</strong> This endpoint is <em>unauthenticated</em> by design for Prometheus compatibility. In production, restrict access to the internal Docker network or add a reverse-proxy auth layer.</p>
+<p>Exposes 30+ metrics in Prometheus text-exposition format (MIME: <code>text/plain; version=0.0.4</code>).</p>
+<ul>
+  <li><strong>Backend:</strong> active_requests, requests_total, errors_5xx_total, discards_4xx_total, latency_ms_avg, memory_mb, uptime_seconds, db_pool_size, db_pool_checked_out</li>
+  <li><strong>Frontend (nginx):</strong> up, active_connections, reading, writing, waiting, accepts_total, handled_total, requests_total</li>
+  <li><strong>DB (MySQL):</strong> connections, threads_running, errors_total, aborted_clients_total, aborted_connects_total, questions_total, uptime_seconds, bytes_received_total, bytes_sent_total, slow_queries_total, select_full_join_total, tmp_disk_tables_total</li>
+  <li><strong>Alerts:</strong> ledger_alerts_active{severity="high|medium|low"}</li>
+  <li><strong>Misc:</strong> ledger_insights_history_snapshots</li>
+</ul>`,
+    code: `GET /metrics
+
+# Example usage in prometheus.yml:
+scrape_configs:
+  - job_name: ledger_backend
+    static_configs:
+      - targets: [backend:8000]
+    metrics_path: /metrics`
+  },
+  {
+    id: 12, cat: 'API Reference', priority: 'high', date: '2026-03-20',
+    title: 'Financial Insights Endpoint',
+    tags: ['api', 'finance', 'analytics'],
+    body: `<p>Authenticated user endpoint (all roles). Returns rich financial analytics for the caller's data.</p>`,
+    code: `GET /api/financial-insights?months=6
+
+# Response sections:
+# summary      — current & prev month income/expenses/net, savings rate %, MoM change %
+# net_worth    — assets, liabilities, invested, current_value, unrealised_gain
+# top_categories — top 10 spending categories this month
+# monthly_trend  — per-month income/expense/net/savings_rate for last N months
+# budget_utilization — per-budget: limit, spent, remaining, utilization_pct, over_budget
+# investments  — total_invested, current_value, by_type breakdown, sip_count
+# goals        — name, target, current, progress_pct, deadline
+# recommendations — auto-generated alerts/warnings/ok based on financial health`
+  },
+  {
+    id: 13, cat: 'API Reference', priority: 'medium', date: '2026-03-10',
+    title: 'Dashboard Stats Endpoint',
+    tags: ['api', 'finance'],
+    body: `<p>Authenticated user endpoint. Returns current-month summary used by the dashboard cards.</p>`,
+    code: `GET /api/dashboard/stats
+# Returns: total_balance, total_income, total_expenses, savings_rate,
+#          transaction_count, budget_count, goal_count,
+#          budgets_with_spending[], total_budget_limit, total_budget_spent,
+#          budget_remaining, budgets_over_limit`
+  },
+  // ── MONITORING ────────────────────────────────────────────────────────────
+  {
+    id: 20, cat: 'Monitoring', priority: 'high', date: '2026-03-15',
+    title: 'App Insights — Dashboard Guide',
+    tags: ['monitoring', 'admin', 'insights'],
+    body: `<p>Admin Settings → 📊 App Insights. Auto-refreshes every 15 s (configurable via <code>ADMIN_APP_INSIGHTS_REFRESH_MS</code>).</p>
+<ul>
+  <li><strong>Summary row:</strong> health indicators per instance (Frontend / Backend / DB)</li>
+  <li><strong>Charts row:</strong> connections, errors, latency time-series with zoom/pan support</li>
+  <li><strong>Log panels:</strong> 3 separate panels (Frontend Logs / Backend Logs / DB Logs) with shared search</li>
+  <li><strong>Correlation panel:</strong> Cross-instance relationship signals — see rule table below</li>
+  <li><strong>SRE panel:</strong> SLI/SLO/Error Budget using configurable SLO targets</li>
+</ul>
+<p><strong>Zoom controls:</strong> Scroll to zoom · Ctrl+Drag to pan · "Reset Zoom" button resets ALL charts globally via <code>Chart.getChart(canvas)</code> iteration.</p>
+<p><strong>Time ranges:</strong> Last 30 min / 2 hrs / 4 hrs / 24 hrs / 7 days / 30 days / Custom range.</p>
+<p><strong>History:</strong> 60 snapshots retained in memory; older data persisted to <code>AppInsightsMetric</code> DB table.</p>`,
+  },
+  {
+    id: 21, cat: 'Monitoring', priority: 'high', date: '2026-03-15',
+    title: 'Cross-Instance Correlation Rules',
+    tags: ['monitoring', 'correlation', 'alerts'],
+    body: `<p>The 🔗 Cross-Instance Relationship Signals panel evaluates 4 rules on the latest snapshot:</p>
+<ul>
+  <li class="doc-card-body"><strong>🔴 CRITICAL</strong> — FE waiting &gt; 200 AND BE latency ≥ 500 ms → "Frontend queue buildup impacts backend latency"</li>
+  <li><strong>🔴 CRITICAL</strong> — BE errors &gt; 0 AND DB errors &gt; 0 → "Backend and DB errors rising together"</li>
+  <li><strong>🟡 WARN</strong> — FE connections &gt; 300 AND BE connections &gt; 40 → "Frontend and Backend connection pressure"</li>
+  <li><strong>🟡 WARN</strong> — BE connections &gt; 40 AND DB connections &gt; 80 → "Backend and DB connection pressure"</li>
+</ul>
+<p>A red critical-alert banner appears when <code>criticalAlertsCount &gt; 0</code> (severity === 'high' alerts).</p>`,
+  },
+  {
+    id: 22, cat: 'Monitoring', priority: 'medium', date: '2026-03-15',
+    title: 'Alert Severity Thresholds',
+    tags: ['monitoring', 'alerts', 'thresholds'],
+    body: `<ul>
+  <li><strong>HIGH:</strong> Backend 5xx errors &gt; 0 · DB connection/client abort errors &gt; 0</li>
+  <li><strong>MEDIUM:</strong> Backend 4xx discards &gt; 20 · DB connections &gt; 80 · Frontend nginx unreachable · Frontend connections &gt; 300</li>
+</ul>
+<p>Alerts are derived dynamically on each API call — not persisted to DB. Prometheus metric <code>ledger_alerts_active{severity="…"}</code> exposes them for Grafana alerting rules.</p>`,
+  },
+  {
+    id: 23, cat: 'Monitoring', priority: 'medium', date: '2026-03-15',
+    title: 'Frontend Metrics Source — nginx stub_status',
+    tags: ['monitoring', 'nginx', 'frontend'],
+    body: `<p>Frontend instance metrics are pulled server-side from nginx <code>/nginx_status</code> stub_status module (configured in <code>nginx.conf</code>). The backend calls this endpoint internally when serving App Insights API calls.</p>
+<ul>
+  <li>Provides: <code>active_connections</code>, <code>reading</code>, <code>writing</code>, <code>waiting</code>, <code>accepts</code>, <code>handled</code>, <code>requests_total</code></li>
+  <li>Does <em>not</em> provide: per-route error/discard counters (nginx EE needed for that)</li>
+  <li>CPU and memory for frontend/DB instances require host-level telemetry integration (currently <code>null</code>)</li>
+</ul>`,
+  },
+  // ── GRAFANA ────────────────────────────────────────────────────────────
+  {
+    id: 30, cat: 'Grafana & Prometheus', priority: 'high', date: '2026-03-20',
+    title: 'Grafana Setup & Auto-Provisioning',
+    tags: ['grafana', 'prometheus', 'monitoring'],
+    body: `<p>Grafana (port 3000, default creds <code>admin/admin</code>) auto-provisions on startup from:</p>
+<ul>
+  <li><code>grafana/provisioning/datasources/prometheus.yml</code> — connects to <code>http://prometheus:9090</code></li>
+  <li><code>grafana/provisioning/dashboards/dashboard.yml</code> — scans dashboard JSON folder every 30 s</li>
+  <li><code>grafana/provisioning/dashboards/ledger-app-insights.json</code> — pre-built 13-panel "Ledger App Insights" dashboard</li>
+</ul>
+<p><strong>Panels:</strong> Backend active requests · Avg latency · Memory · Error/discard rates · Throughput · nginx connections · nginx throughput · Frontend up · DB connections · DB errors & slow queries · DB network I/O · Alerts by severity · DB connection pool.</p>
+<p><strong>⚠️ Post-install:</strong> Change the default Grafana admin password immediately in production.</p>`,
+    code: `# Prometheus retention and reload
+docker compose exec prometheus promtool check config /etc/prometheus/prometheus.yml
+curl -X POST http://localhost:9090/-/reload   # requires --web.enable-lifecycle`
+  },
+  // ── AUTHENTICATION ────────────────────────────────────────────────────────
+  {
+    id: 40, cat: 'Authentication', priority: 'critical', date: '2026-03-01',
+    title: 'JWT Configuration',
+    tags: ['auth', 'security', 'jwt'],
+    body: `<p>Set in <code>backend/.env</code> or via Docker Compose <code>environment</code> block:</p>`,
+    code: `SECRET_KEY=your-secret-key-change-this-in-production   # ⚠️ MUST change
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30`
+  },
+  {
+    id: 41, cat: 'Authentication', priority: 'high', date: '2026-03-18',
+    title: 'User vs Admin Login Mode',
+    tags: ['auth', 'login', 'admin'],
+    body: `<p>Both login pages (<code>index.html</code>, <code>login.html</code>) have a User / Admin mode switch:</p>
+<ul>
+  <li>Clicking <strong>Admin</strong> shows a red warning banner: "You are signing in as an administrator"</li>
+  <li>The submit button text changes to "Sign In as Admin" in admin mode</li>
+  <li><code>setLoginMode(mode)</code> JS function manages state; <code>currentLoginMode</code> variable tracks current mode</li>
+  <li>Switching between Login / Register tabs resets the warning; returning to Login restores the mode state</li>
+</ul>`,
+  },
+  {
+    id: 42, cat: 'Authentication', priority: 'high', date: '2026-03-01',
+    title: 'Admin Access Control',
+    tags: ['auth', 'admin', 'security'],
+    body: `<ul>
+  <li><code>require_admin</code> FastAPI dependency — used on all <code>/api/admin/*</code> endpoints; rejects non-admins with 403</li>
+  <li><code>require_write_access</code> — used on write operations; rejects read-only roles</li>
+  <li>Settings section in the UI requires re-entering the admin password to unlock (<code>unlockSettingsSection()</code>)</li>
+  <li>The corner ⚙️ gear button is admin-only; hidden from regular users</li>
+  <li><code>isAdmin()</code> JS function checks the decoded JWT role client-side (display-only guard, not security boundary)</li>
+</ul>`,
+  },
+  // ── NGINX & SECURITY ─────────────────────────────────────────────────────
+  {
+    id: 50, cat: 'Security', priority: 'critical', date: '2026-03-01',
+    title: 'nginx Security Headers',
+    tags: ['security', 'nginx', 'headers'],
+    body: `<p>All responses include:</p>`,
+    code: `add_header X-Content-Type-Options nosniff always;
+add_header X-Frame-Options SAMEORIGIN always;
+add_header Referrer-Policy strict-origin-when-cross-origin always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+# TLS: TLSv1.2 + TLSv1.3 only
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers HIGH:!aNULL:!MD5;
+ssl_prefer_server_ciphers on;`
+  },
+  {
+    id: 51, cat: 'Security', priority: 'critical', date: '2026-03-20',
+    title: 'Prometheus /metrics Endpoint — Prod Security',
+    tags: ['security', 'prometheus', 'production'],
+    body: `<p><strong>Action required before production deployment.</strong></p>
+<p>The <code>GET /metrics</code> endpoint is unauthenticated (required for standard Prometheus compatibility). Mitigation options:</p>
+<ul>
+  <li><strong>Option A (recommended):</strong> Remove port 8000 from Docker Compose <code>ports</code> so the backend is only reachable within <code>ledger_network</code>. Prometheus reaches it via the internal network; external clients cannot.</li>
+  <li><strong>Option B:</strong> Add a Prometheus <code>basic_auth</code> config and protect <code>/metrics</code> with HTTP basic auth via nginx sub-location.</li>
+  <li><strong>Option C:</strong> Use a network firewall rule (iptables / cloud SG) to allow only the Prometheus server IP on port 8000.</li>
+</ul>`,
+    code: `# Option A — Remove backend external port exposure
+services:
+  backend:
+    # ports:            # ← comment out / remove this
+    #   - "8000:8000"
+    expose:
+      - "8000"          # only reachable within Docker network`
+  },
+  {
+    id: 52, cat: 'Security', priority: 'high', date: '2026-03-01',
+    title: 'Rate Limiting & Registration Guards',
+    tags: ['security', 'auth', 'rate-limit'],
+    body: `<ul>
+  <li>Registration rate limiting applied in <code>auth.py</code> via <code>check_registration_rate_limit()</code></li>
+  <li>Client IP extracted via <code>get_client_ip()</code> (respects X-Forwarded-For)</li>
+  <li>All write mutations require <code>require_write_access</code> dependency</li>
+  <li>Audit logs record all significant actions (login, reset, user changes) via <code>log_audit()</code></li>
+</ul>`,
+  },
+  // ── FRONTEND ARCHITECTURE ────────────────────────────────────────────────
+  {
+    id: 60, cat: 'Frontend', priority: 'high', date: '2026-03-01',
+    title: 'API Utility Layer — Dual Location',
+    tags: ['frontend', 'api', 'critical-note'],
+    body: `<p><strong>⚠️ Critical:</strong> API utility functions exist in TWO places. Both must be kept in sync when adding new endpoints or changing auth logic:</p>
+<ul>
+  <li><code>frontend/assets/api.js</code> — Primary module loaded as a script</li>
+  <li><code>frontend/app.html</code> — Fallback inline <code>window.api</code> object, defined near the top of the script block</li>
+</ul>
+<p>Failure to update both causes silent fallback behaviour where one code path uses stale logic.</p>`,
+  },
+  {
+    id: 61, cat: 'Frontend', priority: 'high', date: '2026-03-01',
+    title: 'Tab System Architecture',
+    tags: ['frontend', 'tabs', 'navigation'],
+    body: `<ul>
+  <li>Quick-tabs bar shows frequently used sections. Additional sections in overflow hamburger menu with built-in search.</li>
+  <li><code>switchTab(tabName, element)</code> — main tab switch; shows/hides sections; updates active state</li>
+  <li><code>selectTabFromMenu(tabName, element)</code> — overflow menu variant; closes menu after switch</li>
+  <li>Admin-only tabs (<code>users</code>, <code>settings</code>) hidden via <code>style="display:none;"</code> and revealed by <code>updateAdminUI()</code></li>
+  <li>URL param <code>?tab=settings</code> supported for deep-linking</li>
+</ul>`,
+  },
+  {
+    id: 62, cat: 'Frontend', priority: 'medium', date: '2026-03-10',
+    title: 'localStorage Keys Reference',
+    tags: ['frontend', 'storage', 'config'],
+    body: ``,
+    code: `finapp_theme                    // 'light' | 'dark'
+finapp_market_widgets_visible   // removed — charts always visible
+expense_column_visibility       // JSON column visibility map
+formula_config                  // JSON admin formula overrides
+sre_slo_config                  // JSON SRE SLO targets
+DASHBOARD_PRIVACY_KEY           // removed — values always shown`
+  },
+  {
+    id: 63, cat: 'Frontend', priority: 'medium', date: '2026-03-15',
+    title: 'Chart.js Zoom and Reset',
+    tags: ['frontend', 'charts', 'zoom'],
+    body: `<p>Charts use Chart.js with <code>chartjs-plugin-zoom</code>:</p>
+<ul>
+  <li>Scroll to zoom, Ctrl+Drag to pan</li>
+  <li>"Reset Zoom" button in the App Insights toolbar resets <em>all</em> charts globally</li>
+  <li>Implementation: iterates all <code>&lt;canvas&gt;</code> elements inside <code>#adminAppInsightsContainer</code> and calls <code>Chart.getChart(canvas).resetZoom()</code> on each</li>
+  <li>This pattern works for dynamically created charts (sparklines etc.) that aren't stored in named variables</li>
+</ul>`,
+  },
+  // ── FINANCIAL LOGIC ──────────────────────────────────────────────────────
+  {
+    id: 70, cat: 'Financial Logic', priority: 'high', date: '2026-03-01',
+    title: 'Transaction Import — Statement & Gmail',
+    tags: ['finance', 'import', 'transactions'],
+    body: `<ul>
+  <li>Statement spreadsheet imports should map credits/debits to existing categories: <strong>Investment</strong> (investment outflows) and <strong>Loans (EMI)</strong> (loan repayments) so overview metrics update automatically</li>
+  <li>Reversed/refunded deposit credits should be tagged in <code>notes</code> with <code>statement_non_income_credit</code> to exclude them from income summaries</li>
+  <li>Use helper filter functions (not raw <code>type === 'income'</code>) for accurate income/expense reporting — statement adjustments must be excluded</li>
+</ul>`,
+  },
+  {
+    id: 71, cat: 'Financial Logic', priority: 'critical', date: '2026-03-01',
+    title: 'Admin Reset — Dual Scope Required',
+    tags: ['finance', 'admin', 'reset', 'critical-note'],
+    body: `<p><strong>⚠️ Known Gotcha:</strong> Admin "Reset All Data" clears backend database tables, but browser-local savings/retirement/insurance collections stored in localStorage are independent.</p>
+<p>A full reset must clear <em>both</em>:</p>
+<ul>
+  <li>Backend: transactions, budgets, goals, investments, liabilities, assets, documents, integrations (users preserved)</li>
+  <li>Browser localStorage: savings products, retirement products, insurance products (if stored locally)</li>
+</ul>
+<p>Otherwise dashboard overview cards will not actually reach zero after a reset.</p>`,
+  },
+  {
+    id: 72, cat: 'Financial Logic', priority: 'high', date: '2026-03-01',
+    title: 'Formula Config Variables Reference',
+    tags: ['finance', 'formulas', 'config'],
+    body: `<p>These variables are available in all admin formula expressions (Settings → 🧮 Formula Config):</p>`,
+    code: `income, regularExpenses, expenseAdj, emiTotal, lumpSumInvestmentOutflow,
+sipTotal, savingsOutflow, emergencyOutflow, retirementOutflow, investmentTx,
+prevBalance, allExpenseTx, portfolioValue, principalValue, totalAssets,
+emergencyFund, netWorth, totalLiabilities, liquidSavings, retirementCorpus,
+insurancePremium, Math.max, Math.min`
+  },
+  {
+    id: 73, cat: 'Financial Logic', priority: 'medium', date: '2026-03-01',
+    title: 'SRE SLO Targets — App Insights',
+    tags: ['monitoring', 'slo', 'sre', 'config'],
+    body: `<p>Configurable in Settings → 🧮 Formula Config → SRE SLO Configuration:</p>
+<ul>
+  <li><strong>Availability SLO (%)</strong> — e.g. 99.9</li>
+  <li><strong>Latency Good Ratio SLO (%)</strong> — % of requests under latency threshold</li>
+  <li><strong>Latency Threshold (ms)</strong> — threshold for "good" latency classification</li>
+  <li><strong>Backend 5xx Error Rate SLO (%)</strong> — acceptable error rate, e.g. 0.1</li>
+</ul>
+<p>Saved to localStorage key <code>sre_slo_config</code>. Resets available via "↩ Reset SLOs".</p>`,
+  },
+  // ── DATABASE ──────────────────────────────────────────────────────────────
+  {
+    id: 80, cat: 'Database', priority: 'high', date: '2026-03-01',
+    title: 'MySQL Connection & Pool Config',
+    tags: ['database', 'mysql', 'config'],
+    body: ``,
+    code: `# docker-compose.yml environment
+MYSQL_ROOT_PASSWORD: rootpassword     # ⚠️ Change in production
+MYSQL_DATABASE: ledger_db
+MYSQL_USER: ledger_user
+MYSQL_PASSWORD: ledger_pass           # ⚠️ Change in production
+
+# Backend DATABASE_URL
+DATABASE_URL=mysql+pymysql://ledger_user:ledger_pass@db:3306/ledger_db
+
+# SQLAlchemy pool status exposed via /metrics:
+# ledger_backend_db_pool_size
+# ledger_backend_db_pool_checked_out`
+  },
+  {
+    id: 81, cat: 'Database', priority: 'medium', date: '2026-03-10',
+    title: 'AppInsightsMetric Table',
+    tags: ['database', 'monitoring', 'schema'],
+    body: `<p>Persists App Insights snapshots for historical queries. Populated by a background recording thread (<code>record_insights_snapshot()</code>) and queried by <code>GET /api/admin/app-insights/history</code>.</p>
+<p>Key columns: <code>recorded_at</code>, <code>backend_active_requests</code>, <code>backend_errors_5xx</code>, <code>backend_discards_4xx</code>, <code>backend_avg_latency_ms</code>, <code>backend_requests_total</code>, <code>backend_memory_mb</code>, <code>frontend_active_connections</code>, <code>frontend_reading/writing/waiting</code>, <code>db_connections</code>, <code>db_threads_running</code>, <code>db_errors</code>, <code>db_total_queries</code>.</p>`,
+  },
+  // ── OPERATIONS ────────────────────────────────────────────────────────────
+  {
+    id: 90, cat: 'Operations', priority: 'high', date: '2026-03-01',
+    title: 'Backup & Restore',
+    tags: ['ops', 'backup', 'database'],
+    body: `<p>Scripts are available in the project root:</p>`,
+    code: `./backup.sh     # Creates a timestamped MySQL dump in /backups/
+./restore.sh    # Restores from a dump file — pass the file as argument`
+  },
+  {
+    id: 91, cat: 'Operations', priority: 'medium', date: '2026-03-01',
+    title: 'Troubleshooting Commands',
+    tags: ['ops', 'debugging', 'docker'],
+    body: ``,
+    code: `# Check all service logs
+docker compose logs -f
+
+# Backend only
+docker compose logs -f backend
+
+# nginx status check
+curl http://localhost/nginx_status
+
+# Backend health
+curl http://localhost:8000/health
+
+# Diagnose script
+./diagnose.sh
+
+# Verify dependencies
+./test-requirements.sh
+
+# Check security headers
+curl -I https://localhost`
+  },
+  {
+    id: 92, cat: 'Operations', priority: 'medium', date: '2026-03-01',
+    title: 'SSL Certificates',
+    tags: ['ops', 'ssl', 'nginx'],
+    body: `<p>nginx is configured for HTTPS with self-signed or provisioned certs at:</p>`,
+    code: `/etc/nginx/certs/ledger-app.crt
+/etc/nginx/certs/ledger-app.key
+
+# Mounted at runtime. For production, replace with CA-signed certs.
+# nginx.conf: ssl_protocols TLSv1.2 TLSv1.3; (TLS 1.0/1.1 disabled)`
+  },
+  // ── CHANGELOG / RECENT ────────────────────────────────────────────────────
+  {
+    id: 100, cat: 'Changelog', priority: 'info', date: '2026-03-20',
+    title: 'v: Financial Insights API + Fin_Insights tab rename',
+    tags: ['changelog', 'api', 'frontend'],
+    body: `<ul>
+  <li>Added <code>GET /api/financial-insights</code> endpoint with full financial analytics</li>
+  <li>Renamed "Insights" tab to "Fin_Insights" to distinguish from App Insights (admin)</li>
+  <li>Removed Show/Hide toggle buttons from landing page (dashboard values always visible, market charts always shown)</li>
+</ul>`,
+  },
+  {
+    id: 101, cat: 'Changelog', priority: 'info', date: '2026-03-20',
+    title: 'v: Prometheus + Grafana integration',
+    tags: ['changelog', 'monitoring', 'prometheus', 'grafana'],
+    body: `<ul>
+  <li>Added <code>GET /metrics</code> Prometheus endpoint to FastAPI backend (no extra library — manual text exposition)</li>
+  <li>Added <code>prometheus.yml</code> scrape config (15 s interval, ledger_backend job)</li>
+  <li>Added Prometheus + Grafana services to <code>docker-compose.yml</code></li>
+  <li>Added Grafana auto-provisioning: Prometheus datasource + 13-panel "Ledger App Insights" dashboard</li>
+</ul>`,
+  },
+  {
+    id: 102, cat: 'Changelog', priority: 'info', date: '2026-03-18',
+    title: 'v: Cross-instance log correlation panel',
+    tags: ['changelog', 'monitoring', 'insights'],
+    body: `<ul>
+  <li>Separated App Insights logs into 3 independent panels: Frontend / Backend / DB (shared search)</li>
+  <li>Added Cross-Instance Relationship Signals panel with 4 rule-based detectors</li>
+  <li>Critical alert count banner (red) shown when severity='high' alerts present</li>
+  <li>CSS classes: <code>.insights-corr-item.critical</code> (red border), <code>.warn</code> (orange border)</li>
+</ul>`,
+  },
+  {
+    id: 103, cat: 'Changelog', priority: 'info', date: '2026-03-15',
+    title: 'v: User vs Admin login distinction',
+    tags: ['changelog', 'auth', 'login'],
+    body: `<ul>
+  <li>Added User/Admin mode toggle to both login pages with styled buttons</li>
+  <li>Admin warning banner displayed when admin mode selected</li>
+  <li>Button text changes to "Sign In as Admin"; fixed <code>switchAuthTab</code> to use element param instead of global event.target</li>
+</ul>`,
+  },
+  {
+    id: 104, cat: 'Changelog', priority: 'info', date: '2026-03-10',
+    title: 'v: App Insights per-instance logs & zoom reset',
+    tags: ['changelog', 'monitoring', 'insights'],
+    body: `<ul>
+  <li><code>_derive_instance_logs()</code> in backend derives per-instance structured log streams</li>
+  <li>Both App Insights API endpoints return <code>instance_logs: {frontend, backend, db}</code></li>
+  <li>Reset Zoom moved to toolbar; now resets ALL charts (not just 4 named chart vars)</li>
+  <li>Removed "Columns" and "Import Full CSV" buttons from Expense tab; retained "Import Statement"</li>
+</ul>`,
+  },
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUTH
+// ════════════════════════════════════════════════════════════════════════════
+const API_BASE = '';
+let _authed = false;
+
+function decodeJwt(token) {
+  try {
+    const payload = token.split('.')[1];
+    return JSON.parse(atob(payload.replace(/-/g,'+').replace(/_/g,'/')));
+  } catch { return null; }
+}
+
+function showDocsApp() {
+  _authed = true;
+  document.getElementById('authGate').style.display = 'none';
+  document.getElementById('kbHeader').style.display = 'flex';
+  document.getElementById('mainLayout').style.display = 'flex';
+  initApp();
+}
+
+async function fetchCurrentUser(token) {
+  const res = await fetch(`${API_BASE}/api/auth/me`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!res.ok) {
+    return null;
+  }
+
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function isAdminUser(user) {
+  const role = (user?.role || '').toString().toLowerCase();
+  return role === 'admin' || role === 'superadmin';
+}
+
+async function tryAuth() {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  if (token) {
+    const user = await fetchCurrentUser(token);
+    if (isAdminUser(user)) {
+      showDocsApp();
+      return;
+    }
+
+    // Clear stale or non-admin token to avoid repeated failed bootstrap attempts.
+    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
+  }
+
+  document.getElementById('authGate').style.display = 'flex';
+}
+
+async function loginWithCredentials() {
+  const username = (document.getElementById('authUsernameInput').value || '').trim();
+  const password = document.getElementById('authPasswordInput').value || '';
+  const err = document.getElementById('authError');
+
+  if (!username || !password) {
+    err.textContent = 'Please enter admin username and password.';
+    return;
+  }
+
+  err.textContent = '';
+
+  try {
+    const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!loginRes.ok) {
+      let message = 'Invalid credentials.';
+      try {
+        const payload = await loginRes.json();
+        if (payload && payload.detail) {
+          message = payload.detail;
+        }
+      } catch {}
+      err.textContent = message;
+      return;
+    }
+
+    const loginPayload = await loginRes.json();
+    const token = loginPayload?.access_token;
+    if (!token) {
+      err.textContent = 'Login succeeded but no access token was returned.';
+      return;
+    }
+
+    const user = await fetchCurrentUser(token);
+    if (!isAdminUser(user)) {
+      err.textContent = 'This account is not an admin account.';
+      return;
+    }
+
+    localStorage.setItem('token', token);
+    showDocsApp();
+  } catch (e) {
+    err.textContent = 'Unable to reach the server. Please try again.';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// APP STATE
+// ════════════════════════════════════════════════════════════════════════════
+let _view = 'all';          // 'all' | 'timeline' | category name
+let _priorityFilter = null;
+let _searchQuery = '';
+let _theme = localStorage.getItem('finapp_docs_theme') || 'dark';
+
+// ════════════════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════════════════
+function initApp() {
+  applyTheme(_theme);
+  buildSidebar();
+  renderStats();
+  render();
+  document.getElementById('kbSearch').focus();
+}
+
+function applyTheme(t) {
+  _theme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('finapp_docs_theme', t);
+  document.getElementById('themeBtn').textContent = t === 'dark' ? '☀️' : '🌙';
+}
+
+function toggleTheme() {
+  applyTheme(_theme === 'dark' ? 'light' : 'dark');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SIDEBAR
+// ════════════════════════════════════════════════════════════════════════════
+function buildSidebar() {
+  const cats = [...new Set(KB_DATA.map(d => d.cat))];
+  const navEl = document.getElementById('catNavItems');
+  navEl.innerHTML = cats.map(cat => {
+    const count = KB_DATA.filter(d => d.cat === cat).length;
+    const icon = catIcon(cat);
+    return `<button class="kb-nav-item" onclick="setView('cat:${cat}', this)" data-view="cat:${cat}">
+      ${icon} ${cat} <span class="kb-nav-badge">${count}</span>
+    </button>`;
+  }).join('');
+
+  // Set priority badges
+  ['critical','high','medium','info'].forEach(p => {
+    const el = document.getElementById(`pBadge-${p}`);
+    if (el) el.textContent = KB_DATA.filter(d => d.priority === p).length;
+  });
+  document.getElementById('navBadge-all').textContent = KB_DATA.length;
+}
+
+function catIcon(cat) {
+  const map = {
+    'Architecture': '🏗️', 'API Reference': '📡', 'Monitoring': '📊',
+    'Grafana & Prometheus': '📈', 'Authentication': '🔐', 'Security': '🛡️',
+    'Frontend': '🖥️', 'Financial Logic': '💰', 'Database': '🗄️',
+    'Operations': '⚙️', 'Changelog': '📋',
+  };
+  return map[cat] || '📁';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// VIEW SWITCHING
+// ════════════════════════════════════════════════════════════════════════════
+function setView(view, btn) {
+  _view = view;
+  _priorityFilter = null;
+  _searchQuery = '';
+  document.getElementById('kbSearch').value = '';
+  document.getElementById('searchCount').style.display = 'none';
+  document.querySelectorAll('.kb-nav-item').forEach(el => el.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  render();
+}
+
+function filterPriority(p, btn) {
+  _view = 'all';
+  _priorityFilter = _priorityFilter === p ? null : p;
+  document.querySelectorAll('.kb-nav-item').forEach(el => el.classList.remove('active'));
+  if (_priorityFilter && btn) btn.classList.add('active');
+  render();
+}
+
+function doSearch() {
+  _searchQuery = document.getElementById('kbSearch').value.trim().toLowerCase();
+  _view = 'all';
+  _priorityFilter = null;
+  document.querySelectorAll('.kb-nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelector('[data-view="all"]')?.classList.add('active');
+  render();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FILTER
+// ════════════════════════════════════════════════════════════════════════════
+function filteredData() {
+  let data = [...KB_DATA];
+  if (_view === 'timeline') return data.sort((a,b) => b.date.localeCompare(a.date));
+  if (_view.startsWith('cat:')) {
+    const cat = _view.slice(4);
+    data = data.filter(d => d.cat === cat);
+  }
+  if (_priorityFilter) data = data.filter(d => d.priority === _priorityFilter);
+  if (_searchQuery) {
+    data = data.filter(d => {
+      const hay = [d.title, d.body, d.cat, (d.tags||[]).join(' '), d.code||''].join(' ').toLowerCase();
+      return hay.includes(_searchQuery);
+    });
+  }
+  return data;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════════════════════════════════
+function renderStats() {
+  const stats = [
+    { label: 'Total Entries', value: KB_DATA.length },
+    { label: 'Critical / High', value: KB_DATA.filter(d => d.priority === 'critical' || d.priority === 'high').length },
+    { label: 'Categories', value: [...new Set(KB_DATA.map(d => d.cat))].length },
+    { label: 'Last Updated', value: '23 Mar 2026' },
+  ];
+  document.getElementById('kbStats').innerHTML = stats.map(s =>
+    `<div class="kb-stat"><div class="kb-stat-label">${s.label}</div><div class="kb-stat-value">${s.value}</div></div>`
+  ).join('');
+}
+
+function render() {
+  const data = filteredData();
+  const countEl = document.getElementById('searchCount');
+  document.getElementById('viewTitle').textContent = viewTitle();
+
+  if (_searchQuery) {
+    countEl.style.display = 'inline';
+    countEl.textContent = `${data.length} result${data.length !== 1 ? 's' : ''}`;
+  } else {
+    countEl.style.display = 'none';
+  }
+
+  const content = document.getElementById('kbContent');
+
+  if (data.length === 0) {
+    content.innerHTML = `<div class="kb-empty"><div class="kb-empty-icon">🔍</div><div class="kb-empty-msg">No entries match "${_searchQuery}"</div></div>`;
+    return;
+  }
+
+  if (_view === 'timeline') {
+    content.innerHTML = renderTimeline(data);
+    return;
+  }
+
+  // Group by category
+  const groups = {};
+  data.forEach(d => {
+    if (!groups[d.cat]) groups[d.cat] = [];
+    groups[d.cat].push(d);
+  });
+
+  content.innerHTML = Object.entries(groups).map(([cat, items]) => `
+    <div class="kb-section-header">
+      <span class="kb-section-icon">${catIcon(cat)}</span>
+      <span class="kb-section-title">${cat}</span>
+      <span class="kb-section-count">${items.length}</span>
+    </div>
+    ${items.map(d => renderCard(d)).join('')}
+  `).join('');
+
+  // Wire copy buttons
+  content.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const code = btn.closest('pre').querySelector('code').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+      });
+    });
+  });
+}
+
+function viewTitle() {
+  if (_searchQuery) return `Search results for "${_searchQuery}"`;
+  if (_view === 'timeline') return 'Changelog Timeline';
+  if (_view.startsWith('cat:')) return _view.slice(4);
+  if (_priorityFilter) return `${_priorityFilter.charAt(0).toUpperCase() + _priorityFilter.slice(1)} Priority`;
+  return 'All Documentation Entries';
+}
+
+function renderCard(d) {
+  const pLabel = { critical: 'CRITICAL', high: 'HIGH', medium: 'MEDIUM', info: 'INFO' }[d.priority] || d.priority.toUpperCase();
+  const tags = (d.tags || []).map(t => `<span class="doc-badge tag">${t}</span>`).join('');
+  const isNew = d.date >= '2026-03-18';
+  const newBadge = isNew ? '<span class="doc-badge new">NEW</span>' : '';
+  const codeBlock = d.code ? `<pre class="code-block"><button class="copy-btn">Copy</button><code>${escHtml(d.code.trim())}</code></pre>` : '';
+  return `<div class="doc-card priority-${d.priority}">
+    <div class="doc-card-header">
+      <div class="doc-card-title">${d.title}</div>
+      <div class="doc-card-meta">
+        ${newBadge}
+        <span class="doc-badge ${d.priority}">${pLabel}</span>
+      </div>
+    </div>
+    <div class="doc-card-body">${d.body}${codeBlock}</div>
+    <div class="doc-card-footer">
+      <span class="doc-card-date">🗓 ${formatDate(d.date)}</span>
+      ${tags}
+    </div>
+  </div>`;
+}
+
+function renderTimeline(data) {
+  const dotColor = { critical: 'red', high: 'yellow', medium: '', info: 'green' };
+  return `<div class="timeline">${data.map(d => `
+    <div class="tl-item">
+      <div class="tl-dot ${dotColor[d.priority] || ''}"></div>
+      <div class="tl-date">${formatDate(d.date)} · ${catIcon(d.cat)} ${d.cat}</div>
+      <div class="tl-title">${d.title}</div>
+      <div class="tl-desc">${stripHtml(d.body).slice(0, 180)}${stripHtml(d.body).length > 180 ? '…' : ''}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function stripHtml(s) {
+  return s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+}
+function formatDate(d) {
+  try { return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}); }
+  catch { return d; }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BOOT
+// ════════════════════════════════════════════════════════════════════════════
+tryAuth();
+</script>
+</body>
+</html>

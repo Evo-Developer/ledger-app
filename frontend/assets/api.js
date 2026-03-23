@@ -197,6 +197,39 @@ class API {
         return this.request('/auth/me');
     }
 
+    async updateMyProfile(profile) {
+        return this.request('/auth/me/profile', {
+            method: 'PUT',
+            body: JSON.stringify(profile),
+        });
+    }
+
+    async changeMyPassword(currentPassword, newPassword) {
+        return this.request('/auth/me/password', {
+            method: 'POST',
+            body: JSON.stringify({
+                current_password: currentPassword,
+                new_password: newPassword,
+            }),
+        });
+    }
+
+    async externalProvisionUser(payload, apiKey) {
+        return this.request('/rbac/external/provision-user', {
+            method: 'POST',
+            headers: apiKey ? { 'X-RBAC-API-Key': apiKey } : {},
+            body: JSON.stringify(payload),
+        });
+    }
+
+    async externalFederatedSync(payload, apiKey) {
+        return this.request('/rbac/external/federated-sync', {
+            method: 'POST',
+            headers: apiKey ? { 'X-RBAC-API-Key': apiKey } : {},
+            body: JSON.stringify(payload),
+        });
+    }
+
     // Transactions
     async getTransactions() {
         return this.request('/transactions?limit=5000');
@@ -472,6 +505,13 @@ class API {
         return this.request(`/users/${userId}/status`, {
             method: 'PUT',
             body: JSON.stringify({ is_active: isActive }),
+        });
+    }
+
+    async updateUserPermissions(userId, permissions) {
+        return this.request(`/users/${userId}/permissions`, {
+            method: 'PUT',
+            body: JSON.stringify({ permissions }),
         });
     }
 

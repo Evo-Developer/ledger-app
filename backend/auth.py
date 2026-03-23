@@ -9,6 +9,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+import json
 import os
 
 from database import get_db
@@ -19,12 +20,109 @@ from schemas import TokenData
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production-please-use-openssl-rand-hex-32-to-generate")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+SUPERADMIN_USERNAME = os.getenv("SUPERADMIN_USERNAME", "admin")
+SUPERADMIN_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "admin123")
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+
+
+ALL_TABS = [
+    "expenses", "income", "budgets", "goals", "savings", "investments",
+    "retirement", "insurance", "liabilities", "assets", "documents",
+    "integrations", "insights", "users", "settings", "audit"
+]
+
+ALL_PAGES = [
+    "dashboard", "financial_insights", "documents", "integrations", "users", "settings",
+    "admin_app_insights", "formula_config", "danger_zone", "admin_docs", "audit_trail", "access_control"
+]
+
+ALL_FIELDS = [
+    "financial_values", "budgets", "goals", "investments", "assets", "liabilities",
+    "documents", "integrations", "insurance", "retirement", "audit_export", "user_role_controls", "federated_identity"
+]
+
+ALL_PERMISSIONS = [
+    "write", "manage_users", "manage_roles", "manage_permissions", "manage_settings",
+    "view_app_insights", "manage_formulas", "reset_data", "view_audit", "export_audit",
+    "view_admin_docs", "external_rbac_sync"
+]
+
+
+def get_default_permissions(role: str) -> dict:
+    normalized_role = (role or UserRole.USER.value).lower()
+    if normalized_role == UserRole.SUPERADMIN.value:
+        return {
+            "tabs": ALL_TABS,
+            "pages": ALL_PAGES,
+            "fields": ALL_FIELDS,
+            "permissions": ALL_PERMISSIONS,
+        }
+
+    if normalized_role == UserRole.ADMIN.value:
+        return {
+            "tabs": [
+                "expenses", "income", "budgets", "goals", "savings", "investments",
+                "retirement", "insurance", "liabilities", "assets", "documents",
+                "integrations", "insights", "users", "settings"
+            ],
+            "pages": [
+                "dashboard", "financial_insights", "documents", "integrations", "users", "settings",
+                "admin_app_insights", "formula_config", "danger_zone", "admin_docs"
+            ],
+            "fields": [
+                "financial_values", "budgets", "goals", "investments", "assets", "liabilities",
+                "documents", "integrations", "insurance", "retirement", "user_role_controls"
+            ],
+            "permissions": [
+                "write", "manage_users", "manage_settings", "view_app_insights",
+                "manage_formulas", "reset_data", "view_admin_docs"
+            ],
+        }
+
+    if normalized_role == UserRole.READONLY.value:
+        return {
+            "tabs": ["expenses", "income", "budgets", "goals", "savings", "investments", "retirement", "insurance", "liabilities", "assets", "documents", "integrations", "insights"],
+            "pages": ["dashboard", "financial_insights", "documents", "integrations"],
+            "fields": ["financial_values", "budgets", "goals", "investments", "assets", "liabilities", "documents", "insurance", "retirement"],
+            "permissions": [],
+        }
+
+    return {
+        "tabs": ["expenses", "income", "budgets", "goals", "savings", "investments", "retirement", "insurance", "liabilities", "assets", "documents", "integrations", "insights"],
+        "pages": ["dashboard", "financial_insights", "documents", "integrations"],
+        "fields": ["financial_values", "budgets", "goals", "investments", "assets", "liabilities", "documents", "insurance", "retirement"],
+        "permissions": ["write"],
+    }
+
+
+def normalize_permissions(role: str, permissions_json: Optional[str]) -> dict:
+    permissions = get_default_permissions(role)
+    if not permissions_json:
+        return permissions
+
+    try:
+        parsed = json.loads(permissions_json)
+    except Exception:
+        return permissions
+
+    for key in ("tabs", "pages", "fields", "permissions"):
+        if isinstance(parsed.get(key), list):
+            permissions[key] = sorted({str(item) for item in parsed[key] if item is not None})
+
+    return permissions
+
+
+def user_has_permission(user: User, permission: str) -> bool:
+    if not user:
+        return False
+    if user.role == UserRole.SUPERADMIN.value:
+        return True
+    return permission in normalize_permissions(user.role, getattr(user, "permissions_json", None)).get("permissions", [])
 
 
 def get_client_ip(request: Request) -> str:
@@ -127,7 +225,7 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
 
 async def require_admin(current_user: User = Depends(get_current_active_user)) -> User:
     """Require admin role."""
-    if current_user.role != UserRole.ADMIN.value:
+    if current_user.role not in {UserRole.ADMIN.value, UserRole.SUPERADMIN.value}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin role required"
@@ -135,9 +233,18 @@ async def require_admin(current_user: User = Depends(get_current_active_user)) -
     return current_user
 
 
+async def require_superadmin(current_user: User = Depends(get_current_active_user)) -> User:
+    if current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin role required"
+        )
+    return current_user
+
+
 async def require_write_access(current_user: User = Depends(get_current_active_user)) -> User:
     """Require a non-readonly role for write operations."""
-    if current_user.role == UserRole.READONLY.value:
+    if current_user.role == UserRole.READONLY.value or not user_has_permission(current_user, "write"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your role is readonly. You can view data but cannot make changes."
@@ -162,8 +269,14 @@ __all__ = [
     'get_current_user',
     'get_current_active_user',
     'require_admin',
+    'require_superadmin',
     'require_write_access',
     'get_client_ip',
     'check_registration_rate_limit',
-    'ACCESS_TOKEN_EXPIRE_MINUTES'
+    'ACCESS_TOKEN_EXPIRE_MINUTES',
+    'SUPERADMIN_USERNAME',
+    'SUPERADMIN_PASSWORD',
+    'get_default_permissions',
+    'normalize_permissions',
+    'user_has_permission'
 ]

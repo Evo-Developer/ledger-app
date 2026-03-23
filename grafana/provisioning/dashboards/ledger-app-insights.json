@@ -1,0 +1,249 @@
+{
+  "id": null,
+  "uid": "ledger-app-insights",
+  "title": "Ledger App Insights",
+  "tags": ["ledger", "prometheus"],
+  "timezone": "browser",
+  "schemaVersion": 37,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Backend – Active Requests",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "ledger_backend_active_requests",
+          "legendFormat": "Active Requests",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 2,
+      "title": "Backend – Average Latency (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "expr": "ledger_backend_latency_ms_avg",
+          "legendFormat": "Avg Latency ms",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "id": 3,
+      "title": "Backend – Memory Usage (MB)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "expr": "ledger_backend_memory_mb",
+          "legendFormat": "Memory MB",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "decmbytes" } }
+    },
+    {
+      "id": 4,
+      "title": "Backend – Error & Discard Rates",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 7 },
+      "targets": [
+        {
+          "expr": "rate(ledger_backend_errors_5xx_total[1m])",
+          "legendFormat": "5xx errors/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(ledger_backend_discards_4xx_total[1m])",
+          "legendFormat": "4xx discards/s",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 5,
+      "title": "Backend – Request Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 7 },
+      "targets": [
+        {
+          "expr": "rate(ledger_backend_requests_total[1m])",
+          "legendFormat": "Requests/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 6,
+      "title": "Frontend (nginx) – Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "ledger_frontend_active_connections",
+          "legendFormat": "Active",
+          "refId": "A"
+        },
+        {
+          "expr": "ledger_frontend_waiting",
+          "legendFormat": "Waiting",
+          "refId": "B"
+        },
+        {
+          "expr": "ledger_frontend_reading",
+          "legendFormat": "Reading",
+          "refId": "C"
+        },
+        {
+          "expr": "ledger_frontend_writing",
+          "legendFormat": "Writing",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 7,
+      "title": "Frontend (nginx) – Request Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 14 },
+      "targets": [
+        {
+          "expr": "rate(ledger_frontend_requests_total[1m])",
+          "legendFormat": "Requests/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 8,
+      "title": "Frontend – Up",
+      "type": "stat",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 14 },
+      "targets": [
+        {
+          "expr": "ledger_frontend_up",
+          "legendFormat": "Frontend Up",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "DB – Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 21 },
+      "targets": [
+        {
+          "expr": "ledger_db_connections",
+          "legendFormat": "Threads Connected",
+          "refId": "A"
+        },
+        {
+          "expr": "ledger_db_threads_running",
+          "legendFormat": "Threads Running",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 10,
+      "title": "DB – Errors & Slow Queries",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 21 },
+      "targets": [
+        {
+          "expr": "rate(ledger_db_errors_total[1m])",
+          "legendFormat": "Errors/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(ledger_db_slow_queries_total[1m])",
+          "legendFormat": "Slow Queries/s",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 11,
+      "title": "DB – Network I/O",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 21 },
+      "targets": [
+        {
+          "expr": "rate(ledger_db_bytes_received_total[1m])",
+          "legendFormat": "Bytes Received/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(ledger_db_bytes_sent_total[1m])",
+          "legendFormat": "Bytes Sent/s",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" } }
+    },
+    {
+      "id": 12,
+      "title": "Active Alerts by Severity",
+      "type": "bargauge",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "expr": "ledger_alerts_active",
+          "legendFormat": "{{severity}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byLabelValue", "options": { "label": "severity", "value": "high" } }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+          { "matcher": { "id": "byLabelValue", "options": { "label": "severity", "value": "medium" } }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byLabelValue", "options": { "label": "severity", "value": "low" } }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] }
+        ]
+      }
+    },
+    {
+      "id": 13,
+      "title": "DB Connection Pool (Backend → DB)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        {
+          "expr": "ledger_backend_db_pool_size",
+          "legendFormat": "Pool Size",
+          "refId": "A"
+        },
+        {
+          "expr": "ledger_backend_db_pool_checked_out",
+          "legendFormat": "Checked Out",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    }
+  ]
+}

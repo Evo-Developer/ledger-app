@@ -280,6 +280,43 @@
             font-size: 13px;
             margin-top: 16px;
         }
+        .login-mode-switch {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .login-mode-btn {
+            border: 1px solid var(--border);
+            background: #f8fbff;
+            color: var(--text-secondary);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .login-mode-btn.active {
+            border-color: var(--accent);
+            color: var(--accent-dark);
+            background: #ebf2ff;
+        }
+        .admin-warning {
+            display: none;
+            margin-bottom: 14px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #f59e0b;
+            background: #fff7e8;
+            color: #92400e;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .admin-warning.show {
+            display: block;
+        }
 
         .spinner {
             width: 20px;
@@ -353,8 +390,8 @@
 
         <div class="auth-card">
             <div class="auth-tabs">
-                <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
-                <button class="auth-tab" onclick="switchAuthTab('register')">Register</button>
+                <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login', this)">Login</button>
+                <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register', this)">Register</button>
             </div>
 
             <div class="error-message" id="errorMessage"></div>
@@ -362,6 +399,13 @@
 
             <!-- Login Form -->
             <form id="loginForm" class="auth-form active" onsubmit="handleLogin(event)">
+                <div class="login-mode-switch">
+                    <button type="button" class="login-mode-btn active" id="userLoginModeBtn" onclick="setLoginMode('user')">👤 User Login</button>
+                    <button type="button" class="login-mode-btn" id="adminLoginModeBtn" onclick="setLoginMode('admin')">🛡️ Admin Login</button>
+                </div>
+                <div id="adminLoginWarning" class="admin-warning">
+                    ⚠️ Admin access is restricted. Only authorized administrators should continue.
+                </div>
                 <div class="form-group">
                     <label class="form-label">Username</label>
                     <input type="text" class="form-input" id="loginUsername" required placeholder="Enter your username">
@@ -417,6 +461,8 @@
     </div>
 
     <script>
+        let currentLoginMode = 'user';
+
         function getApiBaseUrls() {
             const urls = [];
             const pushUrl = (value) => {
@@ -540,17 +586,40 @@
             }
         }
 
-        function switchAuthTab(tab) {
+        function switchAuthTab(tab, element = null) {
             // Update tab buttons
             document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
+            const tabButton = element || document.querySelector(`.auth-tab[data-tab="${tab}"]`);
+            if (tabButton) {
+                tabButton.classList.add('active');
+            }
 
             // Update forms
             document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
             document.getElementById(tab + 'Form').classList.add('active');
 
+            if (tab !== 'login') {
+                const warningEl = document.getElementById('adminLoginWarning');
+                if (warningEl) warningEl.classList.remove('show');
+            } else {
+                setLoginMode(currentLoginMode);
+            }
+
             // Clear messages
             hideMessages();
+        }
+
+        function setLoginMode(mode) {
+            currentLoginMode = mode === 'admin' ? 'admin' : 'user';
+            const userBtn = document.getElementById('userLoginModeBtn');
+            const adminBtn = document.getElementById('adminLoginModeBtn');
+            const warningEl = document.getElementById('adminLoginWarning');
+            const loginBtn = document.getElementById('loginBtn');
+
+            if (userBtn) userBtn.classList.toggle('active', currentLoginMode === 'user');
+            if (adminBtn) adminBtn.classList.toggle('active', currentLoginMode === 'admin');
+            if (warningEl) warningEl.classList.toggle('show', currentLoginMode === 'admin');
+            if (loginBtn) loginBtn.textContent = currentLoginMode === 'admin' ? 'Sign In as Admin' : 'Sign In';
         }
 
         function showError(message) {
@@ -720,6 +789,8 @@
                 document.getElementById('loginForm').requestSubmit();
             });
         });
+
+        setLoginMode('user');
     </script>
 </body>
 </html>

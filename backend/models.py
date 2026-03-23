@@ -8,6 +8,7 @@ Base = declarative_base()
 
 
 class UserRole(str, enum.Enum):
+    SUPERADMIN = "superadmin"
     ADMIN = "admin"
     USER = "user"
     READONLY = "readonly"
@@ -22,6 +23,9 @@ class User(Base):
     full_name = Column(String(255))
     hashed_password = Column(String(255), nullable=False)
     role = Column(String(32), nullable=False, default=UserRole.USER.value)
+    permissions_json = Column(Text, nullable=True)
+    identity_provider = Column(String(64), nullable=True)
+    external_subject = Column(String(255), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -148,6 +152,7 @@ class Investment(Base):
     annual_growth_rate = Column(Float, nullable=True)
     monthly_sip = Column(Boolean, nullable=False, default=False)
     start_date = Column(Date, nullable=True)
+    goal_id = Column(Integer, nullable=True)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -165,6 +170,9 @@ class Liability(Base):
     amount = Column(Float, nullable=False)
     outstanding = Column(Float, nullable=False)
     is_loan = Column(Boolean, nullable=False, default=False)
+    liability_type = Column(String(50), nullable=True, default='general')  # general, credit_card, tax
+    credit_limit = Column(Float, nullable=True)
+    is_paid_off = Column(Boolean, nullable=True, default=False)
     loan_start_date = Column(DateTime, nullable=True)
     loan_tenure_months = Column(Integer, nullable=True)
     interest_rate = Column(Float, nullable=True)
@@ -221,3 +229,33 @@ class AuditLog(Base):
 
     # Relationships
     user = relationship("User", back_populates="audit_logs")
+
+
+class AppInsightsMetric(Base):
+    __tablename__ = "app_insights_metrics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Backend (FastAPI) metrics
+    backend_active_requests = Column(Integer, default=0)
+    backend_errors_5xx = Column(Integer, default=0)
+    backend_discards_4xx = Column(Integer, default=0)
+    backend_avg_latency_ms = Column(Float, default=0.0)
+    backend_requests_total = Column(Integer, default=0)
+    backend_memory_mb = Column(Float, default=0.0)
+    
+    # Frontend (Nginx) metrics
+    frontend_active_connections = Column(Integer, default=0)
+    frontend_reading = Column(Integer, default=0)
+    frontend_writing = Column(Integer, default=0)
+    frontend_waiting = Column(Integer, default=0)
+    frontend_accepts = Column(Integer, default=0)
+    frontend_handled = Column(Integer, default=0)
+    frontend_requests_total = Column(Integer, default=0)
+    
+    # Database (MySQL) metrics
+    db_connections = Column(Integer, default=0)
+    db_threads_running = Column(Integer, default=0)
+    db_errors = Column(Integer, default=0)
+    db_total_queries = Column(Integer, default=0)

@@ -60,3 +60,10 @@ mysql_data/
 *.bak
 *.backup
 backup.sql
+
+# Local HTTPS development certificates
+frontend/certs/*.crt
+frontend/certs/*.key
+frontend/certs/*.csr
+frontend/certs/*.srl
+frontend/certs/*.ext

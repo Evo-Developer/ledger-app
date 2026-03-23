@@ -58,13 +58,56 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    volumes:
+      - ./frontend/certs:/etc/nginx/certs
     depends_on:
       - backend
     networks:
       - ledger_network
 
+  # Prometheus – scrapes /metrics from the backend
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: ledger_prometheus
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - backend
+    networks:
+      - ledger_network
+
+  # Grafana – visualises Prometheus metrics
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: ledger_grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - ledger_network
+
 volumes:
   mysql_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   ledger_network:
