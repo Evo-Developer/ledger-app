@@ -22,6 +22,14 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
       retries: 10
+    deploy:
+      resources:
+        reservations:
+          cpus: '1'
+          memory: 512M
+        limits:
+          cpus: '2'
+          memory: 1G
 
   # FastAPI Backend
   backend:
@@ -46,7 +54,15 @@ services:
       - ./backend:/app
     networks:
       - ledger_network
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+    deploy:
+      resources:
+        reservations:
+          cpus: '2'
+          memory: 512M
+        limits:
+          cpus: '4'
+          memory: 1G
 
   # Nginx Frontend
   frontend:
@@ -60,6 +76,7 @@ services:
       - "443:443"
     volumes:
       - ./frontend/certs:/etc/nginx/certs
+      - ./admin-docs:/usr/share/nginx/html/admin-docs:ro
     depends_on:
       - backend
     networks:
@@ -85,6 +102,34 @@ services:
     networks:
       - ledger_network
 
+  # Loki – log aggregation backend
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: ledger_loki
+    restart: always
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - ledger_network
+
+  # Promtail – ships Docker container logs to Loki
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: ledger_promtail
+    restart: always
+    volumes:
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - ledger_network
+
   # Grafana – visualises Prometheus metrics
   grafana:
     image: grafana/grafana:10.4.2
@@ -101,6 +146,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
+      - loki
     networks:
       - ledger_network
 
@@ -108,6 +154,7 @@ volumes:
   mysql_data:
   prometheus_data:
   grafana_data:
+  loki_data:
 
 networks:
   ledger_network:

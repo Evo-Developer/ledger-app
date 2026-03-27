@@ -2,248 +2,597 @@
   "id": null,
   "uid": "ledger-app-insights",
   "title": "Ledger App Insights",
-  "tags": ["ledger", "prometheus"],
+  "tags": ["ledger", "prometheus", "app-insights"],
   "timezone": "browser",
-  "schemaVersion": 37,
-  "version": 1,
+  "schemaVersion": 38,
+  "version": 3,
   "refresh": "15s",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "type": "query",
+        "label": "Prometheus Job",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "query": "label_values(up, job)",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
-      "title": "Backend – Active Requests",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 0 },
-      "targets": [
-        {
-          "expr": "ledger_backend_active_requests",
-          "legendFormat": "Active Requests",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short" } }
-    },
-    {
-      "id": 2,
-      "title": "Backend – Average Latency (ms)",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 0 },
-      "targets": [
-        {
-          "expr": "ledger_backend_latency_ms_avg",
-          "legendFormat": "Avg Latency ms",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "ms" } }
-    },
-    {
-      "id": 3,
-      "title": "Backend – Memory Usage (MB)",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 0 },
-      "targets": [
-        {
-          "expr": "ledger_backend_memory_mb",
-          "legendFormat": "Memory MB",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "decmbytes" } }
-    },
-    {
-      "id": 4,
-      "title": "Backend – Error & Discard Rates",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 7 },
-      "targets": [
-        {
-          "expr": "rate(ledger_backend_errors_5xx_total[1m])",
-          "legendFormat": "5xx errors/s",
-          "refId": "A"
-        },
-        {
-          "expr": "rate(ledger_backend_discards_4xx_total[1m])",
-          "legendFormat": "4xx discards/s",
-          "refId": "B"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "reqps" } }
-    },
-    {
-      "id": 5,
-      "title": "Backend – Request Throughput",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 7 },
-      "targets": [
-        {
-          "expr": "rate(ledger_backend_requests_total[1m])",
-          "legendFormat": "Requests/s",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "reqps" } }
-    },
-    {
-      "id": 6,
-      "title": "Frontend (nginx) – Connections",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 14 },
-      "targets": [
-        {
-          "expr": "ledger_frontend_active_connections",
-          "legendFormat": "Active",
-          "refId": "A"
-        },
-        {
-          "expr": "ledger_frontend_waiting",
-          "legendFormat": "Waiting",
-          "refId": "B"
-        },
-        {
-          "expr": "ledger_frontend_reading",
-          "legendFormat": "Reading",
-          "refId": "C"
-        },
-        {
-          "expr": "ledger_frontend_writing",
-          "legendFormat": "Writing",
-          "refId": "D"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short" } }
-    },
-    {
-      "id": 7,
-      "title": "Frontend (nginx) – Request Throughput",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 14 },
-      "targets": [
-        {
-          "expr": "rate(ledger_frontend_requests_total[1m])",
-          "legendFormat": "Requests/s",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "reqps" } }
-    },
-    {
-      "id": 8,
-      "title": "Frontend – Up",
       "type": "stat",
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 14 },
+      "title": "Backend Up",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "ledger_frontend_up",
-          "legendFormat": "Frontend Up",
-          "refId": "A"
+          "refId": "A",
+          "expr": "max(up{job=\"ledger_backend\"})"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "DOWN", "color": "red" },
+                "1": { "text": "UP", "color": "green" }
+              }
+            }
           ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
-        }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
       }
     },
     {
-      "id": 9,
-      "title": "DB – Connections",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 21 },
+      "id": 2,
+      "type": "stat",
+      "title": "Frontend Up",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
       "targets": [
         {
-          "expr": "ledger_db_connections",
-          "legendFormat": "Threads Connected",
-          "refId": "A"
-        },
-        {
-          "expr": "ledger_db_threads_running",
-          "legendFormat": "Threads Running",
-          "refId": "B"
+          "refId": "A",
+          "expr": "max(ledger_frontend_up)"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" } }
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "DOWN", "color": "red" },
+                "1": { "text": "UP", "color": "green" }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
     },
     {
-      "id": 10,
-      "title": "DB – Errors & Slow Queries",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 21 },
+      "id": 3,
+      "type": "stat",
+      "title": "Request Rate",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "rate(ledger_db_errors_total[1m])",
-          "legendFormat": "Errors/s",
-          "refId": "A"
-        },
-        {
-          "expr": "rate(ledger_db_slow_queries_total[1m])",
-          "legendFormat": "Slow Queries/s",
-          "refId": "B"
+          "refId": "A",
+          "expr": "sum(rate(ledger_backend_requests_total[1m]))"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 10, "color": "yellow" },
+              { "value": 25, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
     },
     {
-      "id": 11,
-      "title": "DB – Network I/O",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 21 },
+      "id": 4,
+      "type": "stat",
+      "title": "5xx Error Rate",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
       "targets": [
         {
-          "expr": "rate(ledger_db_bytes_received_total[1m])",
-          "legendFormat": "Bytes Received/s",
-          "refId": "A"
-        },
-        {
-          "expr": "rate(ledger_db_bytes_sent_total[1m])",
-          "legendFormat": "Bytes Sent/s",
-          "refId": "B"
+          "refId": "A",
+          "expr": "100 * (sum(rate(ledger_backend_errors_5xx_total[5m])) / clamp_min(sum(rate(ledger_backend_requests_total[5m])), 0.001))"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "Bps" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.1, "color": "yellow" },
+              { "value": 1, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
     },
     {
-      "id": 12,
-      "title": "Active Alerts by Severity",
-      "type": "bargauge",
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 28 },
+      "id": 5,
+      "title": "Backend Throughput and Errors",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
       "targets": [
-        {
-          "expr": "ledger_alerts_active",
-          "legendFormat": "{{severity}}",
-          "refId": "A"
-        }
+        { "refId": "A", "expr": "sum(rate(ledger_backend_requests_total[1m]))", "legendFormat": "requests/s" },
+        { "refId": "B", "expr": "sum(rate(ledger_backend_errors_5xx_total[1m]))", "legendFormat": "5xx/s" },
+        { "refId": "C", "expr": "sum(rate(ledger_backend_discards_4xx_total[1m]))", "legendFormat": "4xx/s" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Backend Latency and Active Requests",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "targets": [
+        { "refId": "A", "expr": "ledger_backend_latency_ms_avg", "legendFormat": "latency ms" },
+        { "refId": "B", "expr": "ledger_backend_active_requests", "legendFormat": "active requests" }
       ],
       "fieldConfig": {
         "defaults": { "unit": "short" },
         "overrides": [
-          { "matcher": { "id": "byLabelValue", "options": { "label": "severity", "value": "high" } }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
-          { "matcher": { "id": "byLabelValue", "options": { "label": "severity", "value": "medium" } }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
-          { "matcher": { "id": "byLabelValue", "options": { "label": "severity", "value": "low" } }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] }
+          {
+            "matcher": { "id": "byName", "options": "latency ms" },
+            "properties": [
+              { "id": "unit", "value": "ms" }
+            ]
+          }
         ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Backend Memory and Uptime",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        { "refId": "A", "expr": "ledger_backend_memory_mb", "legendFormat": "memory MB" },
+        { "refId": "B", "expr": "ledger_backend_uptime_seconds", "legendFormat": "uptime" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "memory MB" },
+            "properties": [
+              { "id": "unit", "value": "decmbytes" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "uptime" },
+            "properties": [
+              { "id": "unit", "value": "s" }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 8,
+      "title": "DB Pool Utilization %",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (ledger_backend_db_pool_checked_out / clamp_min(ledger_backend_db_pool_size, 1))",
+          "legendFormat": "pool utilization %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Frontend Connection States",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "ledger_frontend_active_connections", "legendFormat": "active" },
+        { "refId": "B", "expr": "ledger_frontend_waiting", "legendFormat": "waiting" },
+        { "refId": "C", "expr": "ledger_frontend_reading", "legendFormat": "reading" },
+        { "refId": "D", "expr": "ledger_frontend_writing", "legendFormat": "writing" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Frontend Request Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(ledger_frontend_requests_total[1m]))",
+          "legendFormat": "frontend req/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    },
+    {
+      "id": 11,
+      "title": "DB Connections and Running Threads",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 29 },
+      "targets": [
+        { "refId": "A", "expr": "ledger_db_connections", "legendFormat": "connections" },
+        { "refId": "B", "expr": "ledger_db_threads_running", "legendFormat": "threads running" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 12,
+      "title": "DB Error Signals",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 29 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(ledger_db_errors_total[5m]))", "legendFormat": "db errors/s" },
+        { "refId": "B", "expr": "sum(rate(ledger_db_slow_queries_total[5m]))", "legendFormat": "slow queries/s" },
+        { "refId": "C", "expr": "sum(rate(ledger_db_tmp_disk_tables_total[5m]))", "legendFormat": "tmp disk tables/s" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
       }
     },
     {
       "id": 13,
-      "title": "DB Connection Pool (Backend → DB)",
-      "type": "timeseries",
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 28 },
+      "title": "Active Alerts by Severity",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 29 },
       "targets": [
         {
-          "expr": "ledger_backend_db_pool_size",
-          "legendFormat": "Pool Size",
-          "refId": "A"
-        },
-        {
-          "expr": "ledger_backend_db_pool_checked_out",
-          "legendFormat": "Checked Out",
-          "refId": "B"
+          "refId": "A",
+          "expr": "ledger_alerts_active",
+          "legendFormat": "{{severity}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1, "color": "yellow" },
+              { "value": 2, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "namePlacement": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true
+      }
+    },
+    {
+      "id": 14,
+      "title": "History Snapshots Retained",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 37 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ledger_insights_history_snapshots"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 15,
+      "title": "DB Network Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 37 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(ledger_db_bytes_received_total[1m]))", "legendFormat": "bytes received/s" },
+        { "refId": "B", "expr": "sum(rate(ledger_db_bytes_sent_total[1m]))", "legendFormat": "bytes sent/s" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "SLO: Availability (5m)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 42 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - (sum(rate(ledger_backend_errors_5xx_total[5m])) / clamp_min(sum(rate(ledger_backend_requests_total[5m])), 0.001)))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 99.9, "color": "yellow" },
+              { "value": 99.95, "color": "green" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "SLO: Backend Error Rate (5m)",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 42 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum(rate(ledger_backend_errors_5xx_total[5m])) / clamp_min(sum(rate(ledger_backend_requests_total[5m])), 0.001))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.1, "color": "yellow" },
+              { "value": 1, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "SLO: Latency Target (<=500ms)",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 42 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ledger_backend_latency_ms_avg"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 500, "color": "yellow" },
+              { "value": 1000, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "SLO: Error Budget Burn (5m)",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 42 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * ((sum(rate(ledger_backend_errors_5xx_total[5m])) / clamp_min(sum(rate(ledger_backend_requests_total[5m])), 0.001)) / 0.001)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 100, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      }
     }
   ]
 }

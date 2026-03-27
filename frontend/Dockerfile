@@ -15,6 +15,10 @@ RUN mkdir -p /usr/share/nginx/html/assets /etc/nginx/certs
 # Copy all HTML files
 COPY *.html /usr/share/nginx/html/
 
+# Copy PWA files
+COPY manifest.webmanifest /usr/share/nginx/html/
+COPY service-worker.js /usr/share/nginx/html/
+
 # Copy assets directory
 COPY assets /usr/share/nginx/html/assets
 

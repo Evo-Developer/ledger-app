@@ -2,10 +2,11 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import text
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from sqlalchemy import text, func
+from datetime import datetime, timedelta, timezone, date
+from typing import Dict, List, Optional, Tuple, Any
 from jose import JWTError, jwt
 import json
 import os
@@ -14,69 +15,192 @@ import smtplib
 import base64
 import hashlib
 from uuid import uuid4
-from collections import defaultdict
+from collections import defaultdict, deque
 from email.message import EmailMessage
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request as UrlRequest, urlopen
 from urllib.error import HTTPError, URLError
+from contextlib import asynccontextmanager
+import ipaddress
+import random
+import socket
+import pyotp
 import ssl
 import time
 import resource
 import asyncio
 import threading
-from fastapi.responses import HTMLResponse, PlainTextResponse
+import logging
 from pypdf import PdfReader
 from openpyxl import load_workbook
 import xlrd
 
 from database import get_db, init_db, engine
-from models import User, Transaction, Asset, Document, Budget, Goal, Investment, Liability, Integration, AuditLog, AppInsightsMetric, Base, UserRole
+from models import User, Transaction, Asset, Document, Budget, Goal, Event, Investment, Liability, Integration, AuditLog, AppInsightsMetric, Base, UserRole, LedgerEntry, LedgerEntryType, PasswordResetToken
 from schemas import (
     UserCreate, User as UserSchema, Transaction as TransactionSchema,
     Asset as AssetSchema, AssetCreate, AssetUpdate,
     Document as DocumentSchema, DocumentUpdate,
-    TransactionCreate, TransactionUpdate, Budget as BudgetSchema,
+    TransactionCreate, TransactionUpdate, TransactionReversalRequest, Budget as BudgetSchema,
     BudgetCreate, BudgetUpdate, BudgetWithSpending, Goal as GoalSchema, GoalCreate, GoalUpdate,
+    Event as EventSchema, EventCreate, EventUpdate,
     Investment as InvestmentSchema, InvestmentCreate, InvestmentUpdate,
     Liability as LiabilitySchema, LiabilityCreate, LiabilityUpdate,
     Integration as IntegrationSchema, IntegrationCreate, IntegrationUpdate,
     AuditLog as AuditLogSchema, Token, DashboardStats, TransactionFilter,
     AuditLogFilter, LoginRequest, UserRoleUpdate, UserStatusUpdate, UserPermissionsUpdate,
-    UserProfileUpdate, UserPasswordChange,
+    UserProfileUpdate, UserPasswordChange, ForgotPasswordRequest, ResetPasswordRequest,
+    MfaSetupResponse, MfaVerifyRequest, MfaDisableRequest,
     ExternalRBACProvisionRequest, FederatedClaimSyncRequest,
     AdminResetRequest, AdminResetResponse,
+    FirewallStatusUpdateRequest, FirewallStatusResponse,
+    FirewallConnectivityTestRequest, FirewallConnectivityTestResponse,
+    NetworkAdminSettingsUpdateRequest, NetworkAdminSettingsResponse,
+    ExternalConnectivityServiceCreate,
+    ExternalConnectivityService, ExternalConnectivityServiceUpdate,
+    ExternalConnectivityTestRequest, ExternalConnectivityTestResponse,
     ExpenseReportEmailRequest, ExpenseReportEmailResponse, IntegrationAuthUrlResponse,
     DataImportResponse, GmailBankAlertSyncResult, StatementImportResponse,
-    StatementImportTransaction
+    StatementImportTransaction, LedgerEntry as LedgerEntrySchema
 )
 from auth import (
     get_password_hash, verify_password, authenticate_user, create_access_token,
     get_current_active_user, ACCESS_TOKEN_EXPIRE_MINUTES,
     get_client_ip, check_registration_rate_limit, require_admin, require_superadmin, require_write_access,
-    SECRET_KEY, ALGORITHM, SUPERADMIN_USERNAME, SUPERADMIN_PASSWORD,
+    SECRET_KEY, ALGORITHM, SUPERADMIN_USERNAME, SUPERADMIN_PASSWORD, validate_password_policy,
     get_default_permissions, normalize_permissions, user_has_permission
 )
 from integration_providers import get_provider
+from security_config import SecurityHeadersMiddleware, RequestSizeLimitMiddleware, get_cors_origins
+
+# Enterprise concurrency and monitoring imports
+try:
+    from middleware import (
+        RequestTrackingMiddleware, RateLimitMiddleware, 
+        TimeoutMiddleware, CircuitBreakerMiddleware, UserIsolationMiddleware
+    )
+    from concurrency import (
+        connection_pool, circuit_breaker, retry_policy, 
+        active_requests, deadlock_detector, session_manager
+    )
+    from health_monitoring import health_checker, metrics_collector, load_metrics
+    ENTERPRISE_MODE = True
+except ImportError as e:
+    ENTERPRISE_MODE = False
+    print(f"[WARN] Enterprise features disabled: {e}")
 
 import csv
 import io
 import re
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
 from models import TransactionType
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+ENFORCE_IMMUTABLE_TRANSACTIONS = os.getenv("ENFORCE_IMMUTABLE_TRANSACTIONS", "true").lower() in {"1", "true", "yes", "on"}
+
+
+def _utcnow_naive() -> datetime:
+    """Return UTC as naive datetime to preserve existing DB and API behavior."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _normalize_money_amount(value) -> Decimal:
+    """Normalize monetary values to positive 2-decimal fixed-point amounts."""
+    try:
+        normalized = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid monetary amount")
+
+    if normalized <= 0:
+        raise HTTPException(status_code=400, detail="amount must be greater than 0")
+    return normalized
+
+
+def _ledger_account_codes_for_transaction(tx_type: str, category: str) -> Tuple[str, str]:
+    """Return debit and credit account codes for a transaction type/category pair."""
+    normalized_type = (tx_type or "").lower()
+    normalized_category = (category or "uncategorized").strip() or "uncategorized"
+
+    if normalized_type == TransactionType.EXPENSE.value:
+        return f"EXPENSE:{normalized_category}", "ASSET:CASH"
+    if normalized_type == TransactionType.INCOME.value:
+        return "ASSET:CASH", f"INCOME:{normalized_category}"
+    raise HTTPException(status_code=400, detail="Invalid transaction type for ledger posting")
+
+
+def _post_double_entry_ledger(db: Session, db_transaction: Transaction, amount: Decimal) -> None:
+    """Create one debit and one credit ledger entry and enforce balance."""
+    debit_account, credit_account = _ledger_account_codes_for_transaction(
+        db_transaction.type.value if hasattr(db_transaction.type, "value") else str(db_transaction.type),
+        db_transaction.category,
+    )
+
+    debit_entry = LedgerEntry(
+        transaction_id=db_transaction.id,
+        user_id=db_transaction.user_id,
+        entry_type=LedgerEntryType.DEBIT,
+        account_code=debit_account,
+        amount=amount,
+    )
+    credit_entry = LedgerEntry(
+        transaction_id=db_transaction.id,
+        user_id=db_transaction.user_id,
+        entry_type=LedgerEntryType.CREDIT,
+        account_code=credit_account,
+        amount=amount,
+    )
+    db.add(debit_entry)
+    db.add(credit_entry)
+
+    debit_total = amount
+    credit_total = amount
+    if debit_total != credit_total:
+        raise HTTPException(status_code=500, detail="Ledger posting imbalance detected")
 
 # Create tables and ensure migrations
 init_db()
 
-app = FastAPI(title="Ledger Finance API", version="1.0.0")
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    startup_insights_recording()
+    startup_external_connectivity_monitoring()
+    try:
+        yield
+    finally:
+        shutdown_external_connectivity_monitoring()
+        shutdown_insights_recording()
+
+app = FastAPI(title="Ledger Finance API", version="1.0.0", lifespan=app_lifespan)
+
+# Baseline application security controls
+app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Enterprise middleware stack (add in reverse order - executed bottom-to-top)
+if ENTERPRISE_MODE:
+    logger.info("Enabling enterprise middleware stack")
+    app.add_middleware(UserIsolationMiddleware)
+    app.add_middleware(CircuitBreakerMiddleware, failure_threshold=5, recovery_timeout=60)
+    app.add_middleware(TimeoutMiddleware)
+    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(RequestTrackingMiddleware)
 
 # Static upload directory
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
@@ -85,7 +209,7 @@ app.mount('/uploads', StaticFiles(directory=UPLOAD_DIR), name='uploads')
 
 
 APP_INSIGHTS_STATE = {
-    "started_at": datetime.utcnow(),
+    "started_at": _utcnow_naive(),
     "total_requests": 0,
     "active_requests": 0,
     "errors_5xx": 0,
@@ -97,10 +221,680 @@ APP_INSIGHTS_STATE = {
 APP_INSIGHTS_HISTORY: List[Dict] = []
 MAX_INSIGHTS_HISTORY = 60
 
+FIREWALL_STATE_FILE = os.getenv("FIREWALL_STATE_FILE", os.path.join(os.path.dirname(__file__), "firewall_state.json"))
+FIREWALL_LOCK = threading.Lock()
+FIREWALL_STATE: Dict[str, Optional[str]] = {
+    "internet_enabled": True,
+    "updated_at": None,
+    "updated_by": None,
+}
+NETWORK_ADMIN_SETTINGS_FILE = os.getenv(
+    "NETWORK_ADMIN_SETTINGS_FILE",
+    os.path.join(os.path.dirname(__file__), "network_admin_settings.json"),
+)
+NETWORK_ADMIN_SETTINGS_LOCK = threading.Lock()
+NETWORK_ADMIN_SETTINGS: Dict[str, Any] = {
+    "ntp_servers": ["time.google.com", "pool.ntp.org"],
+    "dns_servers": ["8.8.8.8", "1.1.1.1"],
+    "proxy": {
+        "enabled": False,
+        "host": None,
+        "port": None,
+        "username": None,
+        "password": None,
+        "bypass": None,
+    },
+    "active_directory": {
+        "enabled": False,
+        "server": None,
+        "domain": None,
+        "base_dn": None,
+        "group_dn": None,
+        "bind_user": None,
+        "use_ssl": True,
+    },
+    "smtp": {
+        "enabled": False,
+        "host": os.getenv("SMTP_HOST", "smtp.gmail.com"),
+        "port": int(os.getenv("SMTP_PORT", "587")),
+        "username": os.getenv("SMTP_USERNAME"),
+        "password": os.getenv("SMTP_PASSWORD"),
+        "from_email": os.getenv("SMTP_FROM_EMAIL") or os.getenv("SMTP_USERNAME"),
+        "use_tls": True,
+    },
+    "updated_at": None,
+    "updated_by": None,
+}
+EXTERNAL_CONNECTIVITY_STATE_FILE = os.getenv("EXTERNAL_CONNECTIVITY_STATE_FILE", os.path.join(os.path.dirname(__file__), "external_connectivity_state.json"))
+EXTERNAL_CONNECTIVITY_LOCK = threading.RLock()
+EXTERNAL_CONNECTIVITY_RETEST_INTERVAL_SEC = max(30, int(os.getenv("EXTERNAL_CONNECTIVITY_RETEST_INTERVAL_SEC", "300")))
+DEFAULT_EXTERNAL_CONNECTIVITY_SERVICES: List[Dict[str, object]] = [
+    {
+        "id": "grafana",
+        "name": "Grafana Monitoring",
+        "category": "monitoring",
+        "protocol": "http",
+        "enabled": True,
+        "url": "http://grafana:3000/login",
+        "method": "GET",
+        "timeout_sec": 5.0,
+        "notes": "Admin dashboard and performance visualizations.",
+    },
+    {
+        "id": "event-management",
+        "name": "Event Management Tool",
+        "category": "event_management",
+        "protocol": "http",
+        "enabled": False,
+        "url": "https://events.example.com/api/health",
+        "method": "GET",
+        "timeout_sec": 5.0,
+        "notes": "Point this to your event or incident management health endpoint.",
+    },
+    {
+        "id": "splunk",
+        "name": "Splunk",
+        "category": "logging",
+        "protocol": "http",
+        "enabled": False,
+        "url": "https://splunk.example.com:8089/services/server/info",
+        "method": "GET",
+        "timeout_sec": 5.0,
+        "notes": "Use management or health URL depending on your deployment.",
+    },
+    {
+        "id": "snmp",
+        "name": "SNMP Device",
+        "category": "snmp",
+        "protocol": "snmp",
+        "enabled": False,
+        "host": "192.168.1.1",
+        "port": 161,
+        "timeout_sec": 4.0,
+        "community": "public",
+        "oid": "1.3.6.1.2.1.1.1.0",
+        "notes": "Performs an SNMP v1 GET for sysDescr by default.",
+    },
+]
+EXTERNAL_CONNECTIVITY_STATE: Dict[str, Dict[str, object]] = {}
+external_connectivity_monitoring_thread = None
+external_connectivity_monitoring_active = False
+
+
+def _normalize_firewall_state(raw: Optional[dict]) -> Dict[str, Optional[str]]:
+    data = raw or {}
+    return {
+        "internet_enabled": bool(data.get("internet_enabled", True)),
+        "updated_at": data.get("updated_at"),
+        "updated_by": data.get("updated_by"),
+    }
+
+
+def _normalize_network_admin_settings(raw: Optional[dict]) -> Dict[str, Any]:
+    data = raw or {}
+
+    def _to_list(value: Any) -> List[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return [entry.strip() for entry in re.split(r"[\n,]+", value) if entry.strip()]
+        return []
+
+    proxy_raw = data.get("proxy") if isinstance(data.get("proxy"), dict) else {}
+    ad_raw = data.get("active_directory") if isinstance(data.get("active_directory"), dict) else {}
+    smtp_raw = data.get("smtp") if isinstance(data.get("smtp"), dict) else {}
+
+    return {
+        "ntp_servers": _to_list(data.get("ntp_servers")) or ["time.google.com", "pool.ntp.org"],
+        "dns_servers": _to_list(data.get("dns_servers")) or ["8.8.8.8", "1.1.1.1"],
+        "proxy": {
+            "enabled": bool(proxy_raw.get("enabled", False)),
+            "host": (str(proxy_raw.get("host") or "").strip() or None),
+            "port": int(proxy_raw.get("port")) if proxy_raw.get("port") not in (None, "") else None,
+            "username": (str(proxy_raw.get("username") or "").strip() or None),
+            "password": (str(proxy_raw.get("password") or "").strip() or None),
+            "bypass": (str(proxy_raw.get("bypass") or "").strip() or None),
+        },
+        "active_directory": {
+            "enabled": bool(ad_raw.get("enabled", False)),
+            "server": (str(ad_raw.get("server") or "").strip() or None),
+            "domain": (str(ad_raw.get("domain") or "").strip() or None),
+            "base_dn": (str(ad_raw.get("base_dn") or "").strip() or None),
+            "group_dn": (str(ad_raw.get("group_dn") or "").strip() or None),
+            "bind_user": (str(ad_raw.get("bind_user") or "").strip() or None),
+            "use_ssl": bool(ad_raw.get("use_ssl", True)),
+        },
+        "smtp": {
+            "enabled": bool(smtp_raw.get("enabled", False)),
+            "host": (str(smtp_raw.get("host") or "").strip() or os.getenv("SMTP_HOST", "smtp.gmail.com")),
+            "port": int(smtp_raw.get("port")) if smtp_raw.get("port") not in (None, "") else int(os.getenv("SMTP_PORT", "587")),
+            "username": (str(smtp_raw.get("username") or "").strip() or None),
+            "password": (str(smtp_raw.get("password") or "").strip() or None),
+            "from_email": (str(smtp_raw.get("from_email") or "").strip() or None),
+            "use_tls": bool(smtp_raw.get("use_tls", True)),
+        },
+        "updated_at": data.get("updated_at"),
+        "updated_by": data.get("updated_by"),
+    }
+
+
+def _normalize_external_service(raw: Optional[dict]) -> Dict[str, object]:
+    data = raw or {}
+    protocol = str(data.get("protocol") or "http").lower()
+    service_id = str(data.get("id") or uuid4().hex[:12])
+    return {
+        "id": service_id,
+        "name": str(data.get("name") or service_id.replace("-", " ").title()),
+        "category": str(data.get("category") or "monitoring"),
+        "protocol": protocol,
+        "enabled": bool(data.get("enabled", True)),
+        "url": data.get("url"),
+        "host": data.get("host"),
+        "port": int(data.get("port")) if data.get("port") not in (None, "") else None,
+        "timeout_sec": float(data.get("timeout_sec") or 5.0),
+        "method": str(data.get("method") or "GET").upper(),
+        "community": str(data.get("community") or "public"),
+        "oid": str(data.get("oid") or "1.3.6.1.2.1.1.1.0"),
+        "notes": data.get("notes"),
+        "updated_at": data.get("updated_at"),
+        "updated_by": data.get("updated_by"),
+        "last_test": data.get("last_test") if isinstance(data.get("last_test"), dict) else None,
+    }
+
+
+def _slugify_external_service_id(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (value or "").strip().lower()).strip("-")
+    return slug or uuid4().hex[:12]
+
+
+def _generate_external_service_id(name: str) -> str:
+    base = _slugify_external_service_id(name)
+    candidate = base
+    counter = 2
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        while candidate in EXTERNAL_CONNECTIVITY_STATE:
+            candidate = f"{base}-{counter}"
+            counter += 1
+    return candidate
+
+
+def _serialize_external_connectivity_state() -> List[Dict[str, object]]:
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        return [dict(service) for service in EXTERNAL_CONNECTIVITY_STATE.values()]
+
+
+def _load_external_connectivity_state() -> None:
+    raw_services: List[dict] = []
+    if os.path.exists(EXTERNAL_CONNECTIVITY_STATE_FILE):
+        try:
+            with open(EXTERNAL_CONNECTIVITY_STATE_FILE, "r", encoding="utf-8") as fh:
+                loaded = json.load(fh)
+            if isinstance(loaded, list):
+                raw_services = loaded
+        except Exception as exc:
+            logger.warning("Could not load external connectivity state file %s: %s", EXTERNAL_CONNECTIVITY_STATE_FILE, exc)
+
+    if not raw_services:
+        raw_services = DEFAULT_EXTERNAL_CONNECTIVITY_SERVICES
+
+    normalized = [_normalize_external_service(service) for service in raw_services]
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        EXTERNAL_CONNECTIVITY_STATE.clear()
+        for service in normalized:
+            EXTERNAL_CONNECTIVITY_STATE[str(service["id"])] = service
+
+
+def _save_external_connectivity_state() -> None:
+    tmp_path = f"{EXTERNAL_CONNECTIVITY_STATE_FILE}.tmp"
+    payload = _serialize_external_connectivity_state()
+    with open(tmp_path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2)
+    os.replace(tmp_path, EXTERNAL_CONNECTIVITY_STATE_FILE)
+
+
+def _snmp_encode_length(length: int) -> bytes:
+    if length < 128:
+        return bytes([length])
+    encoded = []
+    while length > 0:
+        encoded.insert(0, length & 0xFF)
+        length >>= 8
+    return bytes([0x80 | len(encoded), *encoded])
+
+
+def _snmp_tlv(tag: int, value: bytes) -> bytes:
+    return bytes([tag]) + _snmp_encode_length(len(value)) + value
+
+
+def _snmp_encode_integer(value: int) -> bytes:
+    if value == 0:
+        return _snmp_tlv(0x02, b"\x00")
+    raw = []
+    current = value
+    while current > 0:
+        raw.insert(0, current & 0xFF)
+        current >>= 8
+    if raw and raw[0] & 0x80:
+        raw.insert(0, 0)
+    return _snmp_tlv(0x02, bytes(raw))
+
+
+def _snmp_encode_octet_string(value: str) -> bytes:
+    return _snmp_tlv(0x04, value.encode("utf-8"))
+
+
+def _snmp_encode_null() -> bytes:
+    return _snmp_tlv(0x05, b"")
+
+
+def _snmp_encode_oid(oid: str) -> bytes:
+    parts = [int(part) for part in str(oid).split(".") if part]
+    if len(parts) < 2:
+        raise ValueError("SNMP OID must contain at least two nodes")
+    encoded = [40 * parts[0] + parts[1]]
+    for part in parts[2:]:
+        stack = [part & 0x7F]
+        part >>= 7
+        while part > 0:
+            stack.insert(0, 0x80 | (part & 0x7F))
+            part >>= 7
+        encoded.extend(stack)
+    return _snmp_tlv(0x06, bytes(encoded))
+
+
+def _snmp_build_get_request(community: str, oid: str) -> Tuple[int, bytes]:
+    request_id = random.randint(1, 2_147_483_647)
+    var_bind = _snmp_tlv(0x30, _snmp_encode_oid(oid) + _snmp_encode_null())
+    var_bindings = _snmp_tlv(0x30, var_bind)
+    pdu_content = _snmp_encode_integer(request_id) + _snmp_encode_integer(0) + _snmp_encode_integer(0) + var_bindings
+    pdu = _snmp_tlv(0xA0, pdu_content)
+    message = _snmp_tlv(0x30, _snmp_encode_integer(0) + _snmp_encode_octet_string(community) + pdu)
+    return request_id, message
+
+
+def _test_external_connectivity(payload: Dict[str, object]) -> Dict[str, object]:
+    protocol = str(payload.get("protocol") or "http").lower()
+    timeout_sec = max(1.0, float(payload.get("timeout_sec") or 5.0))
+    started_at = time.perf_counter()
+
+    if protocol in {"http", "https"}:
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            raise HTTPException(status_code=400, detail="URL is required for HTTP/HTTPS connectivity tests")
+        if not url.startswith(("http://", "https://")):
+            url = f"{protocol}://{url}"
+        _ensure_outbound_allowed_for_url(url, f"external connectivity {payload.get('name') or 'service'}")
+        req = UrlRequest(url, headers={"User-Agent": "ledger-external-connectivity-test"}, method=str(payload.get("method") or "GET").upper())
+        try:
+            with urlopen(req, timeout=timeout_sec) as response:
+                latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+                body = response.read(200).decode("utf-8", errors="ignore")
+                return {
+                    "protocol": protocol,
+                    "success": True,
+                    "message": "Connection successful",
+                    "status_code": int(getattr(response, "status", 200)),
+                    "latency_ms": latency_ms,
+                    "response_preview": body[:160] or None,
+                }
+        except HTTPError as exc:
+            latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+            return {
+                "protocol": protocol,
+                "success": False,
+                "message": f"Connection failed: HTTP {exc.code}",
+                "status_code": int(exc.code),
+                "latency_ms": latency_ms,
+                "response_preview": (exc.read(160).decode("utf-8", errors="ignore") if getattr(exc, "fp", None) else None),
+            }
+        except URLError as exc:
+            latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+            return {
+                "protocol": protocol,
+                "success": False,
+                "message": f"Connection failed: {exc.reason}",
+                "latency_ms": latency_ms,
+                "response_preview": None,
+            }
+
+    if protocol == "tcp":
+        host = str(payload.get("host") or "").strip()
+        port = int(payload.get("port") or 0)
+        if not host or not port:
+            raise HTTPException(status_code=400, detail="Host and port are required for TCP connectivity tests")
+        _ensure_outbound_allowed_for_host(host, f"external connectivity {payload.get('name') or 'service'}", port=port, protocol="tcp")
+        try:
+            with socket.create_connection((host, port), timeout=timeout_sec):
+                latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+                return {
+                    "protocol": protocol,
+                    "success": True,
+                    "message": "TCP connection successful",
+                    "latency_ms": latency_ms,
+                    "response_preview": None,
+                }
+        except OSError as exc:
+            latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+            return {
+                "protocol": protocol,
+                "success": False,
+                "message": f"TCP connection failed: {exc}",
+                "latency_ms": latency_ms,
+                "response_preview": None,
+            }
+
+    if protocol == "snmp":
+        host = str(payload.get("host") or "").strip()
+        port = int(payload.get("port") or 161)
+        community = str(payload.get("community") or "public")
+        oid = str(payload.get("oid") or "1.3.6.1.2.1.1.1.0")
+        if not host:
+            raise HTTPException(status_code=400, detail="Host is required for SNMP connectivity tests")
+        _ensure_outbound_allowed_for_host(host, f"external connectivity {payload.get('name') or 'service'}", port=port, protocol="snmp")
+        request_id, packet = _snmp_build_get_request(community, oid)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout_sec)
+        try:
+            sock.sendto(packet, (host, port))
+            response, _ = sock.recvfrom(4096)
+            latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+            request_id_bytes = request_id.to_bytes((request_id.bit_length() + 7) // 8 or 1, byteorder="big")
+            matched = request_id_bytes in response
+            return {
+                "protocol": protocol,
+                "success": True,
+                "message": "SNMP response received" + (" (request id matched)" if matched else ""),
+                "latency_ms": latency_ms,
+                "response_preview": response[:48].hex(),
+            }
+        except socket.timeout:
+            latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+            return {
+                "protocol": protocol,
+                "success": False,
+                "message": "SNMP request timed out",
+                "latency_ms": latency_ms,
+                "response_preview": None,
+            }
+        except OSError as exc:
+            latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+            return {
+                "protocol": protocol,
+                "success": False,
+                "message": f"SNMP request failed: {exc}",
+                "latency_ms": latency_ms,
+                "response_preview": None,
+            }
+        finally:
+            sock.close()
+
+    raise HTTPException(status_code=400, detail="Unsupported protocol. Use http, https, tcp, or snmp")
+
+
+def _run_external_connectivity_test(payload: Dict[str, object]) -> Dict[str, object]:
+    protocol = str(payload.get("protocol") or "http").lower()
+    try:
+        return _test_external_connectivity(payload)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Connectivity test failed"
+        return {
+            "protocol": protocol,
+            "success": False,
+            "message": str(detail),
+            "status_code": int(exc.status_code) if exc.status_code else None,
+            "latency_ms": None,
+            "response_preview": None,
+        }
+    except Exception as exc:
+        logger.warning("External connectivity test failed unexpectedly: %s", exc)
+        return {
+            "protocol": protocol,
+            "success": False,
+            "message": f"Connectivity test failed: {exc}",
+            "status_code": None,
+            "latency_ms": None,
+            "response_preview": None,
+        }
+
+
+def _record_external_connectivity_test_result(service_id: str, result: Dict[str, object], tested_by: str) -> Optional[Dict[str, object]]:
+    test_record = {
+        **result,
+        "tested_at": _utcnow_naive().isoformat(),
+        "tested_by": tested_by,
+    }
+
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        current = EXTERNAL_CONNECTIVITY_STATE.get(service_id)
+        if not current:
+            return None
+        current["last_test"] = test_record
+        current["updated_at"] = _utcnow_naive().isoformat()
+        current["updated_by"] = tested_by
+        _save_external_connectivity_state()
+        return dict(current)
+
+
+def background_external_connectivity_monitor():
+    global external_connectivity_monitoring_active
+    while external_connectivity_monitoring_active:
+        try:
+            with EXTERNAL_CONNECTIVITY_LOCK:
+                services = [dict(service) for service in EXTERNAL_CONNECTIVITY_STATE.values() if service.get("enabled")]
+            for service in services:
+                result = _run_external_connectivity_test(service)
+                _record_external_connectivity_test_result(str(service.get("id")), result, "system:auto-monitor")
+        except Exception as exc:
+            logger.warning("Background external connectivity monitoring error: %s", exc)
+        time.sleep(EXTERNAL_CONNECTIVITY_RETEST_INTERVAL_SEC)
+
+
+def startup_external_connectivity_monitoring():
+    global external_connectivity_monitoring_thread, external_connectivity_monitoring_active
+    if not external_connectivity_monitoring_active:
+        external_connectivity_monitoring_active = True
+        external_connectivity_monitoring_thread = threading.Thread(target=background_external_connectivity_monitor, daemon=True)
+        external_connectivity_monitoring_thread.start()
+        logger.info("External connectivity monitoring started (%ss interval)", EXTERNAL_CONNECTIVITY_RETEST_INTERVAL_SEC)
+
+
+def shutdown_external_connectivity_monitoring():
+    global external_connectivity_monitoring_active
+    external_connectivity_monitoring_active = False
+    logger.info("External connectivity monitoring stopped")
+
+
+def _load_firewall_state() -> None:
+    if not os.path.exists(FIREWALL_STATE_FILE):
+        return
+    try:
+        with open(FIREWALL_STATE_FILE, "r", encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        FIREWALL_STATE.update(_normalize_firewall_state(loaded))
+    except Exception as exc:
+        logger.warning("Could not load firewall state file %s: %s", FIREWALL_STATE_FILE, exc)
+
+
+def _save_firewall_state() -> None:
+    tmp_path = f"{FIREWALL_STATE_FILE}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as fh:
+        json.dump(FIREWALL_STATE, fh, indent=2)
+    os.replace(tmp_path, FIREWALL_STATE_FILE)
+
+
+def _load_network_admin_settings() -> None:
+    if not os.path.exists(NETWORK_ADMIN_SETTINGS_FILE):
+        return
+    try:
+        with open(NETWORK_ADMIN_SETTINGS_FILE, "r", encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        NETWORK_ADMIN_SETTINGS.update(_normalize_network_admin_settings(loaded))
+    except Exception as exc:
+        logger.warning("Could not load network admin settings file %s: %s", NETWORK_ADMIN_SETTINGS_FILE, exc)
+
+
+def _save_network_admin_settings() -> None:
+    tmp_path = f"{NETWORK_ADMIN_SETTINGS_FILE}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as fh:
+        json.dump(NETWORK_ADMIN_SETTINGS, fh, indent=2)
+    os.replace(tmp_path, NETWORK_ADMIN_SETTINGS_FILE)
+
+
+def _serialize_network_admin_settings() -> Dict[str, Any]:
+    return _normalize_network_admin_settings(NETWORK_ADMIN_SETTINGS)
+
+
+def _is_private_or_local_host(hostname: str) -> bool:
+    normalized = (hostname or "").strip().lower()
+    if not normalized:
+        return True
+    if normalized in {"localhost", "127.0.0.1", "::1", "frontend", "backend", "db"}:
+        return True
+    if "." not in normalized:
+        return True
+    try:
+        ip_obj = ipaddress.ip_address(normalized)
+        return bool(ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local)
+    except ValueError:
+        # Domain names are treated as internet endpoints.
+        return False
+
+
+def _ensure_outbound_allowed_for_host(
+    hostname: str,
+    purpose: str = "outbound network call",
+    port: Optional[int] = None,
+    protocol: str = "tcp",
+) -> None:
+    internet_enabled = bool(FIREWALL_STATE.get("internet_enabled", True))
+    is_private = _is_private_or_local_host(hostname)
+    blocked = not internet_enabled and not is_private
+    _log_outbound(
+        host=hostname,
+        port=port,
+        protocol=protocol,
+        url=hostname if port is None else f"{protocol}://{hostname}:{port}",
+        purpose=purpose,
+        blocked=blocked,
+    )
+    if blocked:
+        raise HTTPException(status_code=503, detail=f"Firewall blocked {purpose}: internet access is disabled")
+
+
+def _ensure_outbound_allowed_for_url(url: str, purpose: str = "outbound network call") -> None:
+    parsed = urlsplit(url or "")
+    host = parsed.hostname or ""
+    port = parsed.port or (443 if parsed.scheme in ("https", "") else 80)
+    _ensure_outbound_allowed_for_host(host, purpose, port=port, protocol=parsed.scheme or "https")
+
+
+def _is_inbound_client_allowed(request: Request) -> bool:
+    if bool(FIREWALL_STATE.get("internet_enabled", True)):
+        return True
+    client_ip = get_client_ip(request)
+    try:
+        ip_obj = ipaddress.ip_address(client_ip)
+        return bool(ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local)
+    except ValueError:
+        normalized = (client_ip or "").strip().lower()
+        return normalized in {"localhost", "127.0.0.1", "::1"}
+
+
+def _serialize_firewall_status() -> Dict[str, Optional[str]]:
+    internet_enabled = bool(FIREWALL_STATE.get("internet_enabled", True))
+    return {
+        "internet_enabled": internet_enabled,
+        "inbound_blocked": not internet_enabled,
+        "outbound_blocked": not internet_enabled,
+        "updated_at": FIREWALL_STATE.get("updated_at"),
+        "updated_by": FIREWALL_STATE.get("updated_by"),
+    }
+
+
+_load_firewall_state()
+_load_network_admin_settings()
+_load_external_connectivity_state()
+
+# ==================== Network Traffic Logging ====================
+_NETWORK_LOG_MAX = 500
+_INBOUND_TRAFFIC_LOG: deque = deque(maxlen=_NETWORK_LOG_MAX)
+_OUTBOUND_TRAFFIC_LOG: deque = deque(maxlen=_NETWORK_LOG_MAX)
+_NETWORK_LOG_LOCK = threading.Lock()
+_NETWORK_COUNTERS: Dict[str, int] = {
+    "inbound_total": 0,
+    "inbound_blocked": 0,
+    "outbound_total": 0,
+    "outbound_blocked": 0,
+}
+
+# Paths to skip from inbound traffic log (very noisy health/metrics self-calls)
+_INBOUND_LOG_SKIP_PREFIXES = ("/metrics", "/health", "/favicon")
+
+
+def _log_inbound(
+    *,
+    source_ip: str,
+    method: str,
+    path: str,
+    status_code: int,
+    latency_ms: float,
+    user_agent: str,
+    blocked: bool = False,
+) -> None:
+    for prefix in _INBOUND_LOG_SKIP_PREFIXES:
+        if path.startswith(prefix):
+            return
+    entry = {
+        "id": uuid4().hex[:8],
+        "timestamp": _utcnow_naive().isoformat(),
+        "direction": "inbound",
+        "source_ip": source_ip,
+        "method": method,
+        "path": path,
+        "status_code": status_code,
+        "latency_ms": round(latency_ms, 2),
+        "user_agent": user_agent,
+        "blocked": blocked,
+    }
+    with _NETWORK_LOG_LOCK:
+        _INBOUND_TRAFFIC_LOG.appendleft(entry)
+        _NETWORK_COUNTERS["inbound_total"] += 1
+        if blocked:
+            _NETWORK_COUNTERS["inbound_blocked"] += 1
+
+
+def _log_outbound(
+    *,
+    host: str,
+    port: Optional[int],
+    protocol: str,
+    url: str,
+    purpose: str,
+    blocked: bool,
+    latency_ms: float = 0.0,
+) -> None:
+    entry = {
+        "id": uuid4().hex[:8],
+        "timestamp": _utcnow_naive().isoformat(),
+        "direction": "outbound",
+        "host": host,
+        "port": port,
+        "protocol": protocol,
+        "url": url,
+        "purpose": purpose,
+        "blocked": blocked,
+        "latency_ms": round(latency_ms, 2),
+    }
+    with _NETWORK_LOG_LOCK:
+        _OUTBOUND_TRAFFIC_LOG.appendleft(entry)
+        _NETWORK_COUNTERS["outbound_total"] += 1
+        if blocked:
+            _NETWORK_COUNTERS["outbound_blocked"] += 1
+
 
 def _record_app_error(path: str, status_code: int, elapsed_ms: float) -> None:
     APP_INSIGHTS_STATE["last_errors"].append({
-        "time": datetime.utcnow().isoformat(),
+        "time": _utcnow_naive().isoformat(),
         "path": path,
         "status": status_code,
         "latency_ms": round(elapsed_ms, 2),
@@ -115,6 +909,10 @@ async def collect_runtime_metrics(request: Request, call_next):
     start = time.perf_counter()
     APP_INSIGHTS_STATE["total_requests"] += 1
     APP_INSIGHTS_STATE["active_requests"] += 1
+    _req_source_ip = get_client_ip(request)
+    _req_user_agent = request.headers.get("user-agent", "")
+    _req_method = request.method
+    _req_path = request.url.path
 
     try:
         response = await call_next(request)
@@ -128,6 +926,11 @@ async def collect_runtime_metrics(request: Request, call_next):
         elif response.status_code >= 400:
             APP_INSIGHTS_STATE["discards_4xx"] += 1
 
+        _log_inbound(
+            source_ip=_req_source_ip, method=_req_method, path=_req_path,
+            status_code=response.status_code, latency_ms=elapsed_ms,
+            user_agent=_req_user_agent, blocked=False,
+        )
         return response
     except Exception:
         elapsed_ms = (time.perf_counter() - start) * 1000.0
@@ -135,9 +938,36 @@ async def collect_runtime_metrics(request: Request, call_next):
         APP_INSIGHTS_STATE["backend_latency_samples"] += 1
         APP_INSIGHTS_STATE["errors_5xx"] += 1
         _record_app_error(request.url.path, 500, elapsed_ms)
+        _log_inbound(
+            source_ip=_req_source_ip, method=_req_method, path=_req_path,
+            status_code=500, latency_ms=elapsed_ms,
+            user_agent=_req_user_agent, blocked=False,
+        )
         raise
     finally:
         APP_INSIGHTS_STATE["active_requests"] = max(0, APP_INSIGHTS_STATE["active_requests"] - 1)
+
+
+@app.middleware("http")
+async def enforce_inbound_firewall(request: Request, call_next):
+    if _is_inbound_client_allowed(request):
+        return await call_next(request)
+
+    _log_inbound(
+        source_ip=get_client_ip(request),
+        method=request.method,
+        path=request.url.path,
+        status_code=403,
+        latency_ms=0.0,
+        user_agent=request.headers.get("user-agent", ""),
+        blocked=True,
+    )
+    return JSONResponse(
+        status_code=403,
+        content={
+            "detail": "Firewall blocked inbound internet request while private mode is active"
+        },
+    )
 
 
 def _get_mysql_status_map(db: Session, variables: List[str]) -> Dict[str, int]:
@@ -230,10 +1060,71 @@ def _fetch_frontend_nginx_status() -> Dict[str, Optional[float]]:
     }
 
 
+def _get_financial_insight_totals(
+    db: Session,
+    period_start: Optional[datetime] = None,
+    period_end: Optional[datetime] = None,
+) -> Dict[str, float]:
+    """Aggregate finance KPIs for Grafana/Prometheus Fin_Insights panels.
+
+    If period_start/period_end are provided, totals are constrained to records created
+    within that window (and transaction date for income/expense flows).
+    """
+    tx_income_query = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+        Transaction.type == TransactionType.INCOME
+    )
+    tx_expense_query = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+        Transaction.type == TransactionType.EXPENSE
+    )
+    assets_query = db.query(func.coalesce(func.sum(Asset.value), 0.0))
+    liabilities_query = db.query(func.coalesce(func.sum(Liability.outstanding), 0.0))
+    investments_query = db.query(func.coalesce(func.sum(func.coalesce(Investment.current_value, Investment.amount_invested)), 0.0))
+    goals_target_query = db.query(func.coalesce(func.sum(Goal.target), 0.0))
+    goals_current_query = db.query(func.coalesce(func.sum(Goal.current), 0.0))
+
+    if period_start is not None and period_end is not None:
+        tx_income_query = tx_income_query.filter(Transaction.date >= period_start, Transaction.date < period_end)
+        tx_expense_query = tx_expense_query.filter(Transaction.date >= period_start, Transaction.date < period_end)
+        assets_query = assets_query.filter(Asset.created_at >= period_start, Asset.created_at < period_end)
+        liabilities_query = liabilities_query.filter(Liability.created_at >= period_start, Liability.created_at < period_end)
+        investments_query = investments_query.filter(Investment.created_at >= period_start, Investment.created_at < period_end)
+        goals_target_query = goals_target_query.filter(Goal.created_at >= period_start, Goal.created_at < period_end)
+        goals_current_query = goals_current_query.filter(Goal.created_at >= period_start, Goal.created_at < period_end)
+
+    income_total = float(tx_income_query.scalar() or 0.0)
+    expense_total = float(tx_expense_query.scalar() or 0.0)
+    assets_total = float(assets_query.scalar() or 0.0)
+    liabilities_total = float(liabilities_query.scalar() or 0.0)
+    investment_total = float(investments_query.scalar() or 0.0)
+    goals_target_total = float(goals_target_query.scalar() or 0.0)
+    goals_current_total = float(goals_current_query.scalar() or 0.0)
+
+    savings_total = income_total - expense_total
+    savings_rate_pct = (savings_total / income_total * 100.0) if income_total > 0 else 0.0
+    net_worth_total = assets_total + investment_total - liabilities_total
+    goals_gap_total = max(0.0, goals_target_total - goals_current_total)
+    goals_progress_pct = (goals_current_total / goals_target_total * 100.0) if goals_target_total > 0 else 0.0
+
+    return {
+        "income_total": income_total,
+        "expense_total": expense_total,
+        "savings_total": savings_total,
+        "savings_rate_pct": savings_rate_pct,
+        "assets_total": assets_total,
+        "liabilities_total": liabilities_total,
+        "investment_total": investment_total,
+        "net_worth_total": net_worth_total,
+        "goals_target_total": goals_target_total,
+        "goals_current_total": goals_current_total,
+        "goals_gap_total": goals_gap_total,
+        "goals_progress_pct": goals_progress_pct,
+    }
+
+
 def _safe_iso_ts(value: Optional[str], fallback: Optional[datetime] = None) -> str:
     if isinstance(value, str) and value.strip():
         return value
-    return (fallback or datetime.utcnow()).isoformat()
+    return (fallback or _utcnow_naive()).isoformat()
 
 
 def serialize_user(user: User) -> Dict:
@@ -247,9 +1138,30 @@ def serialize_user(user: User) -> Dict:
         "permissions": permissions,
         "identity_provider": getattr(user, "identity_provider", None),
         "external_subject": getattr(user, "external_subject", None),
+        "mfa_enabled": bool(getattr(user, "mfa_enabled", False)),
         "is_active": user.is_active,
         "created_at": user.created_at,
     }
+
+
+def _build_totp(secret: str) -> pyotp.TOTP:
+    return pyotp.TOTP(secret, interval=30, digits=6)
+
+
+def _normalize_mfa_code(value: Optional[str]) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _verify_totp_code(secret: Optional[str], code: Optional[str]) -> bool:
+    if not secret:
+        return False
+    normalized_code = _normalize_mfa_code(code)
+    if len(normalized_code) != 6:
+        return False
+    try:
+        return bool(_build_totp(secret).verify(normalized_code, valid_window=1))
+    except Exception:
+        return False
 
 
 def ensure_superadmin_account() -> None:
@@ -398,7 +1310,7 @@ def _derive_instance_logs(
         level = severity_to_level.get((alert.get("severity") or "").lower(), "info")
         add_log(instance, level, alert.get("message") or "Alert", source="alert")
 
-    now_ts = datetime.utcnow().isoformat()
+    now_ts = _utcnow_naive().isoformat()
     if frontend_instance.get("status") == "ok":
         add_log(
             "frontend",
@@ -446,6 +1358,8 @@ def log_audit(db: Session, user_id: int, action: str, entity_type: str,
         def make_serializable(obj):
             if isinstance(obj, (datetime.datetime, datetime.date)):
                 return obj.isoformat()
+            if isinstance(obj, Decimal):
+                return str(obj)
             if isinstance(obj, dict):
                 return {k: make_serializable(v) for k, v in obj.items()}
             if isinstance(obj, list):
@@ -610,7 +1524,7 @@ def _parse_statement_date(value: str) -> Optional[datetime]:
         try:
             parsed = datetime.strptime(value, fmt)
             if "%Y" not in fmt and "%y" not in fmt:
-                now = datetime.utcnow()
+                now = _utcnow_naive()
                 parsed = parsed.replace(year=now.year)
             return parsed
         except ValueError:
@@ -1143,7 +2057,7 @@ def _parse_report_month(report_month: Optional[str]) -> tuple[datetime, datetime
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="report_month must be in YYYY-MM format") from exc
     else:
-        now = datetime.utcnow()
+        now = _utcnow_naive()
         month_start = datetime(now.year, now.month, 1)
 
     last_day = calendar.monthrange(month_start.year, month_start.month)[1]
@@ -1293,16 +2207,27 @@ def _build_expense_report_html(user: User, month_label: str, expenses: List[Tran
 
 
 def _send_report_email(recipient_email: str, subject: str, html_body: str) -> None:
-    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = os.getenv("SMTP_USERNAME")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    smtp_from = os.getenv("SMTP_FROM_EMAIL") or smtp_username
+    with NETWORK_ADMIN_SETTINGS_LOCK:
+        smtp_settings = dict((NETWORK_ADMIN_SETTINGS or {}).get("smtp") or {})
+
+    smtp_enabled = bool(smtp_settings.get("enabled", False))
+    smtp_host = (str(smtp_settings.get("host") or "").strip() or os.getenv("SMTP_HOST", "smtp.gmail.com"))
+    smtp_port = int(smtp_settings.get("port") or os.getenv("SMTP_PORT", "587"))
+    smtp_username = (str(smtp_settings.get("username") or "").strip() or os.getenv("SMTP_USERNAME"))
+    smtp_password = (str(smtp_settings.get("password") or "").strip() or os.getenv("SMTP_PASSWORD"))
+    smtp_from = (str(smtp_settings.get("from_email") or "").strip() or os.getenv("SMTP_FROM_EMAIL") or smtp_username)
+    smtp_use_tls = bool(smtp_settings.get("use_tls", True))
 
     if not smtp_username or not smtp_password or not smtp_from:
         raise HTTPException(
             status_code=500,
-            detail="Email delivery is not configured. Set SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM_EMAIL in backend/.env.",
+            detail="Email delivery is not configured. Configure SMTP in Admin Network Settings or set SMTP_USERNAME/SMTP_PASSWORD/SMTP_FROM_EMAIL in backend/.env.",
+        )
+
+    if not smtp_enabled and not os.getenv("SMTP_USERNAME"):
+        raise HTTPException(
+            status_code=500,
+            detail="SMTP is disabled in Admin Network Settings and no fallback SMTP environment variables are configured.",
         )
 
     message = EmailMessage()
@@ -1313,8 +2238,10 @@ def _send_report_email(recipient_email: str, subject: str, html_body: str) -> No
     message.add_alternative(html_body, subtype="html")
 
     try:
+        _ensure_outbound_allowed_for_host(smtp_host, "SMTP email delivery", port=smtp_port, protocol="smtp")
         with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as smtp:
-            smtp.starttls()
+            if smtp_use_tls:
+                smtp.starttls()
             smtp.login(smtp_username, smtp_password)
             smtp.send_message(message)
     except Exception as exc:
@@ -1488,6 +2415,7 @@ def _google_redirect_uri(request: Optional[Request] = None) -> str:
 
 
 def _google_api_json(url: str, method: str = "GET", data: Optional[dict] = None, headers: Optional[dict] = None):
+    _ensure_outbound_allowed_for_url(url, "Google API request")
     encoded_data = None
     request_headers = headers.copy() if headers else {}
     if data is not None:
@@ -1507,6 +2435,7 @@ def _google_api_json(url: str, method: str = "GET", data: Optional[dict] = None,
 
 
 def _google_form_post(url: str, payload: dict):
+    _ensure_outbound_allowed_for_url(url, "Google OAuth request")
     data = urlencode(payload).encode("utf-8")
     req = UrlRequest(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
     try:
@@ -1520,9 +2449,9 @@ def _google_form_post(url: str, payload: dict):
 
 
 def _create_google_oauth_state(user_id: int) -> str:
-    expires = datetime.utcnow() + timedelta(minutes=10)
+    expires = _utcnow_naive() + timedelta(minutes=10)
     return jwt.encode(
-        {"sub": str(user_id), "purpose": "gmail_oauth", "exp": expires, "iat": datetime.utcnow()},
+        {"sub": str(user_id), "purpose": "gmail_oauth", "exp": expires, "iat": _utcnow_naive()},
         SECRET_KEY,
         algorithm=ALGORITHM,
     )
@@ -1550,7 +2479,7 @@ def _upsert_gmail_integration(db: Session, user_id: int, token_data: dict, accou
         integration.connected = True
         integration.account_email = account_email
         integration.oauth_token = token_json
-        integration.last_sync = datetime.utcnow()
+        integration.last_sync = _utcnow_naive()
     else:
         integration = Integration(
             user_id=user_id,
@@ -1559,7 +2488,7 @@ def _upsert_gmail_integration(db: Session, user_id: int, token_data: dict, accou
             account_email=account_email,
             oauth_token=token_json,
             sync_frequency="manual",
-            last_sync=datetime.utcnow(),
+            last_sync=_utcnow_naive(),
         )
         db.add(integration)
 
@@ -1588,7 +2517,7 @@ def _get_valid_google_access_token(db: Session, integration: Integration) -> str
     is_expired = True
     if expires_at:
         try:
-            is_expired = datetime.utcnow() >= datetime.fromisoformat(expires_at)
+            is_expired = _utcnow_naive() >= datetime.fromisoformat(expires_at)
         except ValueError:
             is_expired = True
 
@@ -1606,9 +2535,9 @@ def _get_valid_google_access_token(db: Session, integration: Integration) -> str
     })
 
     token_data["access_token"] = refreshed["access_token"]
-    token_data["expires_at"] = (datetime.utcnow() + timedelta(seconds=int(refreshed.get("expires_in", 3600)) - 60)).isoformat()
+    token_data["expires_at"] = (_utcnow_naive() + timedelta(seconds=int(refreshed.get("expires_in", 3600)) - 60)).isoformat()
     integration.oauth_token = json.dumps(token_data)
-    integration.last_sync = datetime.utcnow()
+    integration.last_sync = _utcnow_naive()
     db.commit()
     db.refresh(integration)
     return token_data["access_token"]
@@ -1798,6 +2727,10 @@ async def register(user: UserCreate, request: Request, db: Session = Depends(get
     ).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email or username already registered")
+
+    policy_error = validate_password_policy(user.password)
+    if policy_error:
+        raise HTTPException(status_code=400, detail=policy_error)
     
     # Create new user
     hashed_password = get_password_hash(user.password)
@@ -1833,16 +2766,19 @@ async def login(
     # Support both application/x-www-form-urlencoded and application/json credentials
     username = None
     password = None
+    mfa_code = None
 
     content_type = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
     if content_type == "application/json":
         payload = await request.json()
         username = payload.get("username")
         password = payload.get("password")
+        mfa_code = payload.get("mfa_code")
     else:
         form_data = await request.form()
         username = form_data.get("username")
         password = form_data.get("password")
+        mfa_code = form_data.get("mfa_code")
 
     if not username or not password:
         raise HTTPException(
@@ -1850,20 +2786,133 @@ async def login(
             detail="Username and password are required"
         )
 
-    # Authenticate user
-    user = authenticate_user(db, username, password, client_ip)
-    if not user:
+    # Authenticate user with explicit inactive-account handling
+    db_user = db.query(User).filter((User.username == username) | (User.email == username)).first()
+    if not db_user or not verify_password(password, db_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if not bool(getattr(db_user, "is_active", True)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is blocked or disabled",
+        )
+
+    user = db_user
+
+    if bool(getattr(user, "mfa_enabled", False)):
+        if not mfa_code:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA code required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not _verify_totp_code(getattr(user, "mfa_secret", None), mfa_code):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA code",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/api/auth/mfa", response_model=MfaSetupResponse)
+def get_mfa_status(current_user: User = Depends(get_current_active_user)):
+    pending_secret = getattr(current_user, "mfa_temp_secret", None)
+    return MfaSetupResponse(
+        enabled=bool(getattr(current_user, "mfa_enabled", False)),
+        pending_setup=bool(pending_secret),
+    )
+
+
+@app.post("/api/auth/mfa/setup", response_model=MfaSetupResponse)
+def begin_mfa_setup(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    if bool(getattr(current_user, "mfa_enabled", False)):
+        return MfaSetupResponse(enabled=True, pending_setup=False)
+
+    secret = pyotp.random_base32()
+    current_user.mfa_temp_secret = secret
+    db.commit()
+    issuer = "Ledger App"
+    otpauth_uri = _build_totp(secret).provisioning_uri(name=current_user.email or current_user.username, issuer_name=issuer)
+    return MfaSetupResponse(
+        enabled=False,
+        pending_setup=True,
+        manual_entry_key=secret,
+        otpauth_uri=otpauth_uri,
+    )
+
+
+@app.post("/api/auth/mfa/enable", response_model=MfaSetupResponse)
+def enable_mfa(
+    payload: MfaVerifyRequest,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    pending_secret = getattr(current_user, "mfa_temp_secret", None)
+    if not pending_secret:
+        raise HTTPException(status_code=400, detail="MFA setup has not been started")
+    if not _verify_totp_code(pending_secret, payload.code):
+        raise HTTPException(status_code=400, detail="Invalid MFA code")
+
+    current_user.mfa_secret = pending_secret
+    current_user.mfa_temp_secret = None
+    current_user.mfa_enabled = True
+    db.commit()
+    db.refresh(current_user)
+    log_audit(
+        db,
+        current_user.id,
+        "update",
+        "user_mfa",
+        str(current_user.id),
+        f"Enabled MFA for {current_user.username}",
+        user_agent=request.headers.get("user-agent")
+    )
+    return MfaSetupResponse(enabled=True, pending_setup=False)
+
+
+@app.post("/api/auth/mfa/disable", response_model=MfaSetupResponse)
+def disable_mfa(
+    payload: MfaDisableRequest,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    if not bool(getattr(current_user, "mfa_enabled", False)):
+        return MfaSetupResponse(enabled=False, pending_setup=False)
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    if not _verify_totp_code(getattr(current_user, "mfa_secret", None), payload.code):
+        raise HTTPException(status_code=400, detail="Invalid MFA code")
+
+    current_user.mfa_enabled = False
+    current_user.mfa_secret = None
+    current_user.mfa_temp_secret = None
+    db.commit()
+    db.refresh(current_user)
+    log_audit(
+        db,
+        current_user.id,
+        "update",
+        "user_mfa",
+        str(current_user.id),
+        f"Disabled MFA for {current_user.username}",
+        user_agent=request.headers.get("user-agent")
+    )
+    return MfaSetupResponse(enabled=False, pending_setup=False)
 
 
 @app.get("/api/auth/me", response_model=UserSchema)
@@ -1948,6 +2997,108 @@ def change_my_password(
         f"Changed password for {current_user.username}"
     )
     return {"message": "Password updated successfully"}
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Send a password reset email. Always returns success to avoid user enumeration."""
+    import secrets
+    from datetime import timedelta
+
+    email = (str(payload.email) or "").strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+
+    # Always return 200 to prevent email enumeration
+    if not user or not user.is_active:
+        return {"message": "If that email is registered, a reset link has been sent."}
+
+    # Invalidate old unused tokens for this user
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used == False  # noqa: E712
+    ).delete()
+    db.flush()
+
+    token = secrets.token_urlsafe(48)
+    expires_at = _utcnow_naive() + timedelta(hours=1)
+    reset_token = PasswordResetToken(token=token, user_id=user.id, expires_at=expires_at)
+    db.add(reset_token)
+    db.commit()
+
+    reset_url = f"{request.headers.get('origin') or str(request.base_url).rstrip('/')}/login.html?reset_token={token}"
+
+    html_body = f"""
+    <html><body style="font-family:sans-serif;max-width:520px;margin:40px auto;color:#1a202c;">
+      <h2 style="color:#3b82f6;">FinApp — Password Reset</h2>
+      <p>Hello <strong>{user.full_name or user.username}</strong>,</p>
+      <p>We received a request to reset the password for your FinApp account.</p>
+      <p style="margin:28px 0;">
+        <a href="{reset_url}" style="background:#3b82f6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Reset My Password
+        </a>
+      </p>
+      <p style="color:#64748b;font-size:13px;">This link expires in <strong>1 hour</strong>. If you did not request a reset, you can safely ignore this email.</p>
+      <p style="color:#64748b;font-size:13px;">Or copy this URL into your browser:<br><code>{reset_url}</code></p>
+    </body></html>
+    """
+
+    try:
+        _send_report_email(user.email, "FinApp — Password Reset Request", html_body)
+    except Exception:
+        # If email fails silently, still return success (token exists, user can contact admin)
+        pass
+
+    return {"message": "If that email is registered, a reset link has been sent."}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(
+    payload: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """Consume a reset token and update the user's password."""
+    token_str = (payload.token or "").strip()
+    new_password = (payload.new_password or "").strip()
+
+    if not token_str or not new_password:
+        raise HTTPException(status_code=400, detail="Token and new password are required")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    reset_token = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token == token_str
+    ).first()
+
+    if not reset_token:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    if reset_token.used:
+        raise HTTPException(status_code=400, detail="This reset link has already been used")
+    if reset_token.expires_at < _utcnow_naive():
+        raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
+
+    user = db.query(User).filter(User.id == reset_token.user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    validate_password_policy(new_password)
+    user.hashed_password = get_password_hash(new_password)
+    reset_token.used = True
+    db.commit()
+
+    log_audit(
+        db,
+        user.id,
+        "update",
+        "user_password",
+        str(user.id),
+        f"Password reset via email token for {user.username}"
+    )
+
+    return {"message": "Password has been reset. You can now log in with your new password."}
 
 
 @app.post("/api/rbac/external/provision-user", response_model=UserSchema)
@@ -2313,6 +3464,346 @@ def reset_all_financial_data(
     )
 
 
+@app.get("/api/admin/firewall/status", response_model=FirewallStatusResponse)
+def get_firewall_status(current_user: User = Depends(require_admin)):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage firewall settings")
+    return FirewallStatusResponse(**_serialize_firewall_status())
+
+
+@app.put("/api/admin/firewall/status", response_model=FirewallStatusResponse)
+def update_firewall_status(
+    payload: FirewallStatusUpdateRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage firewall settings")
+
+    with FIREWALL_LOCK:
+        FIREWALL_STATE["internet_enabled"] = bool(payload.internet_enabled)
+        FIREWALL_STATE["updated_at"] = _utcnow_naive().isoformat()
+        FIREWALL_STATE["updated_by"] = current_user.username
+        _save_firewall_state()
+
+    status_payload = _serialize_firewall_status()
+    log_audit(
+        db,
+        current_user.id,
+        "update",
+        "firewall",
+        "internet-toggle",
+        f"Internet access {'enabled' if status_payload['internet_enabled'] else 'disabled'}",
+        details=status_payload,
+    )
+    return FirewallStatusResponse(**status_payload)
+
+
+@app.post("/api/admin/firewall/test", response_model=FirewallConnectivityTestResponse)
+def test_firewall_connectivity(
+    payload: FirewallConnectivityTestRequest,
+    current_user: User = Depends(require_admin),
+):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage firewall settings")
+
+    test_url = (payload.url or "").strip()
+    if not test_url:
+        raise HTTPException(status_code=400, detail="Test URL is required")
+    if not test_url.startswith(("http://", "https://")):
+        test_url = f"https://{test_url}"
+
+    parsed = urlsplit(test_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Only http and https URLs are supported")
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+    if not bool(FIREWALL_STATE.get("internet_enabled", True)) and not _is_private_or_local_host(parsed.hostname):
+        return FirewallConnectivityTestResponse(
+            url=test_url,
+            internet_enabled=False,
+            success=False,
+            message="Connection failed: internet access is blocked by firewall",
+        )
+
+    started_at = time.perf_counter()
+    req = UrlRequest(test_url, headers={"User-Agent": "ledger-firewall-test"}, method="GET")
+    try:
+        with urlopen(req, timeout=8) as response:
+            latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+            return FirewallConnectivityTestResponse(
+                url=test_url,
+                internet_enabled=bool(FIREWALL_STATE.get("internet_enabled", True)),
+                success=True,
+                message="Connection successful",
+                status_code=int(getattr(response, "status", 200)),
+                latency_ms=latency_ms,
+            )
+    except HTTPError as exc:
+        latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+        return FirewallConnectivityTestResponse(
+            url=test_url,
+            internet_enabled=bool(FIREWALL_STATE.get("internet_enabled", True)),
+            success=False,
+            message=f"Connection failed: HTTP {exc.code}",
+            status_code=int(exc.code),
+            latency_ms=latency_ms,
+        )
+    except URLError as exc:
+        latency_ms = round((time.perf_counter() - started_at) * 1000.0, 2)
+        return FirewallConnectivityTestResponse(
+            url=test_url,
+            internet_enabled=bool(FIREWALL_STATE.get("internet_enabled", True)),
+            success=False,
+            message=f"Connection failed: {exc.reason}",
+            latency_ms=latency_ms,
+        )
+
+
+@app.get("/api/admin/network/settings", response_model=NetworkAdminSettingsResponse)
+def get_network_admin_settings(current_user: User = Depends(require_admin)):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage network settings")
+    with NETWORK_ADMIN_SETTINGS_LOCK:
+        return NetworkAdminSettingsResponse(**_serialize_network_admin_settings())
+
+
+@app.put("/api/admin/network/settings", response_model=NetworkAdminSettingsResponse)
+def update_network_admin_settings(
+    payload: NetworkAdminSettingsUpdateRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage network settings")
+
+    normalized_payload = _normalize_network_admin_settings(payload.model_dump())
+    with NETWORK_ADMIN_SETTINGS_LOCK:
+        NETWORK_ADMIN_SETTINGS.update(normalized_payload)
+        NETWORK_ADMIN_SETTINGS["updated_at"] = _utcnow_naive().isoformat()
+        NETWORK_ADMIN_SETTINGS["updated_by"] = current_user.username
+        _save_network_admin_settings()
+        settings_payload = _serialize_network_admin_settings()
+
+    log_audit(
+        db,
+        current_user.id,
+        "update",
+        "network_settings",
+        "admin-network-settings",
+        "Updated NTP/DNS/proxy/active-directory/SMTP settings",
+        details=settings_payload,
+    )
+    return NetworkAdminSettingsResponse(**settings_payload)
+
+
+@app.get("/api/admin/external-connectivity", response_model=List[ExternalConnectivityService])
+def list_external_connectivity_services(current_user: User = Depends(require_admin)):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage external connectivity settings")
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        services = [ExternalConnectivityService(**dict(service)) for service in EXTERNAL_CONNECTIVITY_STATE.values()]
+    services.sort(key=lambda service: (service.category.lower(), service.name.lower()))
+    return services
+
+
+@app.post("/api/admin/external-connectivity", response_model=ExternalConnectivityService)
+def create_external_connectivity_service(
+    payload: ExternalConnectivityServiceCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage external connectivity settings")
+
+    service_id = _generate_external_service_id(payload.name)
+    created = _normalize_external_service({
+        **payload.model_dump(),
+        "id": service_id,
+        "updated_at": _utcnow_naive().isoformat(),
+        "updated_by": current_user.username,
+    })
+
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        EXTERNAL_CONNECTIVITY_STATE[service_id] = created
+        _save_external_connectivity_state()
+
+    log_audit(
+        db,
+        current_user.id,
+        "create",
+        "external_connectivity",
+        service_id,
+        f"Created external connectivity service {created['name']}",
+        details=created,
+    )
+    return ExternalConnectivityService(**created)
+
+
+@app.put("/api/admin/external-connectivity/{service_id}", response_model=ExternalConnectivityService)
+def update_external_connectivity_service(
+    service_id: str,
+    payload: ExternalConnectivityServiceUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage external connectivity settings")
+
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        existing = EXTERNAL_CONNECTIVITY_STATE.get(service_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="External connectivity service not found")
+
+        merged = _normalize_external_service({
+            **existing,
+            **payload.model_dump(),
+            "id": service_id,
+            "updated_at": _utcnow_naive().isoformat(),
+            "updated_by": current_user.username,
+            "last_test": existing.get("last_test"),
+        })
+        EXTERNAL_CONNECTIVITY_STATE[service_id] = merged
+        _save_external_connectivity_state()
+
+    log_audit(
+        db,
+        current_user.id,
+        "update",
+        "external_connectivity",
+        service_id,
+        f"Updated external connectivity service {merged['name']}",
+        details=merged,
+    )
+    return ExternalConnectivityService(**merged)
+
+
+@app.post("/api/admin/external-connectivity/{service_id}/test", response_model=ExternalConnectivityTestResponse)
+def test_saved_external_connectivity_service(
+    service_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage external connectivity settings")
+
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        existing = EXTERNAL_CONNECTIVITY_STATE.get(service_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="External connectivity service not found")
+
+    result = _run_external_connectivity_test(existing)
+    test_record = {
+        **result,
+        "tested_at": _utcnow_naive().isoformat(),
+        "tested_by": current_user.username,
+    }
+    _record_external_connectivity_test_result(service_id, result, current_user.username)
+
+    log_audit(
+        db,
+        current_user.id,
+        "sync",
+        "external_connectivity",
+        service_id,
+        f"Tested external connectivity service {existing.get('name') or service_id}",
+        details=test_record,
+    )
+
+    return ExternalConnectivityTestResponse(service_id=service_id, **result)
+
+
+@app.post("/api/admin/external-connectivity/test", response_model=ExternalConnectivityTestResponse)
+def test_external_connectivity_on_demand(
+    payload: ExternalConnectivityTestRequest,
+    current_user: User = Depends(require_admin),
+):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage external connectivity settings")
+    result = _run_external_connectivity_test(payload.model_dump())
+    return ExternalConnectivityTestResponse(**result)
+
+
+@app.delete("/api/admin/external-connectivity/{service_id}")
+def delete_external_connectivity_service(
+    service_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage external connectivity settings")
+
+    with EXTERNAL_CONNECTIVITY_LOCK:
+        existing = EXTERNAL_CONNECTIVITY_STATE.pop(service_id, None)
+        if not existing:
+            raise HTTPException(status_code=404, detail="External connectivity service not found")
+        _save_external_connectivity_state()
+
+    log_audit(
+        db,
+        current_user.id,
+        "delete",
+        "external_connectivity",
+        service_id,
+        f"Deleted external connectivity service {existing.get('name') or service_id}",
+        details=existing,
+    )
+    return {"message": "External connectivity service deleted", "service_id": service_id}
+
+
+# ==================== Network Traffic Log Endpoints ====================
+
+@app.get("/api/admin/network/inbound", include_in_schema=True)
+def get_inbound_traffic_log(
+    limit: int = 200,
+    current_user: User = Depends(require_admin),
+):
+    """Return recent inbound HTTP requests captured by the traffic logger. Admin-only."""
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to view network traffic logs")
+    with _NETWORK_LOG_LOCK:
+        entries = list(_INBOUND_TRAFFIC_LOG)[: min(limit, _NETWORK_LOG_MAX)]
+    return {
+        "entries": entries,
+        "total": len(entries),
+        "capacity": _NETWORK_LOG_MAX,
+        "counters": {k: v for k, v in _NETWORK_COUNTERS.items() if k.startswith("inbound")},
+    }
+
+
+@app.get("/api/admin/network/outbound", include_in_schema=True)
+def get_outbound_traffic_log(
+    limit: int = 200,
+    current_user: User = Depends(require_admin),
+):
+    """Return recent outbound network requests captured by the traffic logger. Admin-only."""
+    if not user_has_permission(current_user, "manage_settings") and current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="You do not have permission to view network traffic logs")
+    with _NETWORK_LOG_LOCK:
+        entries = list(_OUTBOUND_TRAFFIC_LOG)[: min(limit, _NETWORK_LOG_MAX)]
+    return {
+        "entries": entries,
+        "total": len(entries),
+        "capacity": _NETWORK_LOG_MAX,
+        "counters": {k: v for k, v in _NETWORK_COUNTERS.items() if k.startswith("outbound")},
+    }
+
+
+@app.delete("/api/admin/network/logs", include_in_schema=True)
+def clear_network_traffic_logs(
+    current_user: User = Depends(require_admin),
+):
+    """Clear all in-memory inbound and outbound traffic logs. Admin-only."""
+    if current_user.role != UserRole.SUPERADMIN.value:
+        raise HTTPException(status_code=403, detail="Only superadmin may clear network logs")
+    with _NETWORK_LOG_LOCK:
+        _INBOUND_TRAFFIC_LOG.clear()
+        _OUTBOUND_TRAFFIC_LOG.clear()
+    logger.info("Network traffic logs cleared by %s", current_user.username)
+    return {"message": "Network traffic logs cleared"}
+
+
 @app.get("/api/admin/app-insights")
 def get_admin_app_insights(
     current_user: User = Depends(require_admin),
@@ -2355,7 +3846,7 @@ def get_admin_app_insights(
             "avg_latency_ms": round(avg_latency_ms, 2),
             "db_pool_size": pool_size,
             "db_pool_checked_out": pool_checked_out,
-            "uptime_seconds": int((datetime.utcnow() - APP_INSIGHTS_STATE["started_at"]).total_seconds()),
+            "uptime_seconds": int((_utcnow_naive() - APP_INSIGHTS_STATE["started_at"]).total_seconds()),
             "recent_errors": APP_INSIGHTS_STATE["last_errors"][-10:],
         },
     }
@@ -2448,7 +3939,7 @@ def get_admin_app_insights(
 
     # Record snapshot for time-series history
     snapshot = {
-        "ts": datetime.utcnow().isoformat(),
+        "ts": _utcnow_naive().isoformat(),
         "backend_connections": APP_INSIGHTS_STATE["active_requests"],
         "backend_errors": APP_INSIGHTS_STATE["errors_5xx"],
         "backend_discards": APP_INSIGHTS_STATE["discards_4xx"],
@@ -2483,7 +3974,7 @@ def get_admin_app_insights(
     )
 
     return {
-        "generated_at": datetime.utcnow(),
+        "generated_at": _utcnow_naive(),
         "instances": {
             "frontend": frontend_instance,
             "backend": backend_instance,
@@ -2526,7 +4017,7 @@ def get_admin_app_insights_history(
         raise HTTPException(status_code=403, detail="You do not have permission to view app insights")
     
     # Determine time range
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     
     if start_time and end_time:
         try:
@@ -2667,7 +4158,7 @@ def get_admin_app_insights_history(
     )
 
     return {
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": _utcnow_naive().isoformat(),
         "start_time": start.isoformat(),
         "end_time": end.isoformat(),
         "record_count": len(history),
@@ -2699,6 +4190,139 @@ def _prom_line(name: str, help_text: str, metric_type: str, value, labels: Optio
     return f"# HELP {name} {help_text}\n# TYPE {name} {metric_type}\n{name}{label_str} {float(value)}\n"
 
 
+# ========== ENTERPRISE HEALTH & MONITORING ENDPOINTS ==========
+
+@app.get("/health", include_in_schema=False)
+def health_check():
+    """Basic health check for load balancers and monitors."""
+    if ENTERPRISE_MODE:
+        health_status = health_checker.get_health_status()
+        status_code = 200 if health_status['status'] == 'healthy' else 503
+        return {
+            'status': health_status['status'],
+            'timestamp': health_status['timestamp'],
+            'database': health_status['checks'].get('database', {}).get('status'),
+            'memory_ok': health_status['checks'].get('memory', {}).get('status') != 'unhealthy',
+            'disk_ok': health_status['checks'].get('disk', {}).get('status') != 'unhealthy'
+        }
+    return {'status': 'healthy', 'timestamp': _utcnow_naive().isoformat()}
+
+
+@app.get("/health/detailed", include_in_schema=False)
+def detailed_health_check():
+    """Detailed health check for monitoring systems."""
+    if ENTERPRISE_MODE:
+        health_status = health_checker.get_health_status()
+        return health_status
+    return {
+        'status': 'healthy',
+        'timestamp': _utcnow_naive().isoformat(),
+        'mode': 'enterprise_disabled'
+    }
+
+
+@app.get("/api/enterprise/concurrency-status", include_in_schema=False)
+def get_concurrency_status(current_user: UserSchema = Depends(get_current_active_user)):
+    """Get current system concurrency and load status."""
+    if not ENTERPRISE_MODE:
+        raise HTTPException(status_code=503, detail="Enterprise features disabled")
+    
+    require_admin(current_user)
+    
+    current_requests, peak_requests = active_requests.get()
+    active_users = session_manager.get_active_users()
+    stalled_ops = deadlock_detector.get_stalled_operations()
+    load_stats = load_metrics.get_load_average()
+    
+    return {
+        'timestamp': _utcnow_naive().isoformat(),
+        'concurrent_requests': {
+            'current': current_requests,
+            'peak': peak_requests
+        },
+        'active_users': len(active_users),
+        'user_request_distribution': active_users,
+        'stalled_operations': len(stalled_ops),
+        'stalled_operations_details': stalled_ops[:10],  # Return top 10
+        'load_metrics': load_stats,
+        'circuit_breaker_state': circuit_breaker.state if ENTERPRISE_MODE else 'unknown'
+    }
+
+
+@app.get("/api/enterprise/performance-metrics", include_in_schema=False)
+def get_performance_metrics(current_user: UserSchema = Depends(get_current_active_user)):
+    """Get detailed performance metrics."""
+    if not ENTERPRISE_MODE:
+        raise HTTPException(status_code=503, detail="Enterprise features disabled")
+    
+    require_admin(current_user)
+    
+    return {
+        'timestamp': _utcnow_naive().isoformat(),
+        'request_latency_metrics': load_metrics.get_load_average(),
+        'all_metrics': metrics_collector.get_all_metrics(),
+        'health_status': health_checker.get_health_status()
+    }
+
+
+@app.post("/api/enterprise/circuit-breaker/reset", include_in_schema=False)
+def reset_circuit_breaker(current_user: UserSchema = Depends(get_current_active_user)):
+    """Manual circuit breaker reset for admin."""
+    if not ENTERPRISE_MODE:
+        raise HTTPException(status_code=503, detail="Enterprise features disabled")
+    
+    require_superadmin(current_user)
+    
+    old_state = circuit_breaker.state
+    circuit_breaker.failures = 0
+    circuit_breaker.state = circuit_breaker.CLOSED
+    
+    logger.warning(f"Circuit breaker manually reset by admin {current_user.username} (was {old_state})")
+    
+    return {
+        'message': 'Circuit breaker reset successfully',
+        'previous_state': old_state,
+        'current_state': circuit_breaker.state
+    }
+
+
+@app.get("/api/enterprise/session-stats", include_in_schema=False)
+def get_session_stats(current_user: UserSchema = Depends(get_current_active_user)):
+    """Get active session statistics."""
+    if not ENTERPRISE_MODE:
+        raise HTTPException(status_code=503, detail="Enterprise features disabled")
+    
+    require_admin(current_user)
+    
+    return {
+        'timestamp': _utcnow_naive().isoformat(),
+        'total_sessions': len(session_manager.sessions),
+        'active_users': session_manager.get_active_users(),
+        'max_age_seconds': 86400
+    }
+
+
+@app.post("/api/enterprise/deadlock-detection-enabled", include_in_schema=False)
+def check_deadlock_issues(current_user: UserSchema = Depends(get_current_active_user)):
+    """Check for potential deadlocked operations."""
+    if not ENTERPRISE_MODE:
+        raise HTTPException(status_code=503, detail="Enterprise features disabled")
+    
+    require_admin(current_user)
+    
+    stalled = deadlock_detector.get_stalled_operations()
+    
+    return {
+        'timestamp': _utcnow_naive().isoformat(),
+        'stalled_operations_count': len(stalled),
+        'stalled_operations': stalled,
+        'needs_investigation': len(stalled) > 0,
+        'auto_recovery_timeout_seconds': deadlock_detector.timeout
+    }
+
+
+# ========== END ENTERPRISE ENDPOINTS ==========
+
 @app.get("/metrics", include_in_schema=False)
 def prometheus_metrics(db: Session = Depends(get_db)):
     """
@@ -2711,7 +4335,7 @@ def prometheus_metrics(db: Session = Depends(get_db)):
     # ---- Backend ----
     latency_samples = max(1, APP_INSIGHTS_STATE["backend_latency_samples"])
     avg_latency_ms = APP_INSIGHTS_STATE["backend_latency_ms_total"] / latency_samples
-    uptime_seconds = int((datetime.utcnow() - APP_INSIGHTS_STATE["started_at"]).total_seconds())
+    uptime_seconds = int((_utcnow_naive() - APP_INSIGHTS_STATE["started_at"]).total_seconds())
 
     usage = resource.getrusage(resource.RUSAGE_SELF)
     backend_memory_mb = float(usage.ru_maxrss) / 1024.0
@@ -2795,8 +4419,62 @@ def prometheus_metrics(db: Session = Depends(get_db)):
     for severity, count in alert_counts.items():
         lines.append(f'ledger_alerts_active{{severity="{severity}"}} {count}\n')
 
+    # ---- Fin_Insights KPIs ----
+    try:
+        now = _utcnow_naive()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if month_start.month == 12:
+            next_month_start = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month_start = month_start.replace(month=month_start.month + 1)
+
+        fin_all = _get_financial_insight_totals(db)
+        fin_monthly = _get_financial_insight_totals(db, period_start=month_start, period_end=next_month_start)
+
+        for prefix, fin_values, label in [
+            ("ledger_fin_all_time_", fin_all, "all-time"),
+            ("ledger_fin_monthly_", fin_monthly, "current calendar month"),
+        ]:
+            lines.append(_prom_line(f"{prefix}income_total", f"Total income ({label}) across all users", "gauge", round(fin_values["income_total"], 2)))
+            lines.append(_prom_line(f"{prefix}expense_total", f"Total expense ({label}) across all users", "gauge", round(fin_values["expense_total"], 2)))
+            lines.append(_prom_line(f"{prefix}savings_total", f"Total savings ({label}) across all users", "gauge", round(fin_values["savings_total"], 2)))
+            lines.append(_prom_line(f"{prefix}savings_rate_pct", f"Savings rate percentage ({label}) across all users", "gauge", round(fin_values["savings_rate_pct"], 3)))
+            lines.append(_prom_line(f"{prefix}assets_total", f"Total asset value ({label}) across all users", "gauge", round(fin_values["assets_total"], 2)))
+            lines.append(_prom_line(f"{prefix}liabilities_total", f"Total liabilities ({label}) across all users", "gauge", round(fin_values["liabilities_total"], 2)))
+            lines.append(_prom_line(f"{prefix}investments_total", f"Total investments ({label}) across all users", "gauge", round(fin_values["investment_total"], 2)))
+            lines.append(_prom_line(f"{prefix}net_worth_total", f"Net worth ({label}) across all users", "gauge", round(fin_values["net_worth_total"], 2)))
+            lines.append(_prom_line(f"{prefix}goals_target_total", f"Goals target total ({label}) across all users", "gauge", round(fin_values["goals_target_total"], 2)))
+            lines.append(_prom_line(f"{prefix}goals_current_total", f"Goals current total ({label}) across all users", "gauge", round(fin_values["goals_current_total"], 2)))
+            lines.append(_prom_line(f"{prefix}goals_gap_total", f"Goals gap total ({label}) across all users", "gauge", round(fin_values["goals_gap_total"], 2)))
+            lines.append(_prom_line(f"{prefix}goals_progress_pct", f"Goals progress percentage ({label}) across all users", "gauge", round(fin_values["goals_progress_pct"], 3)))
+
+        # Backward-compatible metric names map to all-time values.
+        lines.append(_prom_line("ledger_fin_income_total", "Total income across all users (all-time)", "gauge", round(fin_all["income_total"], 2)))
+        lines.append(_prom_line("ledger_fin_expense_total", "Total expense across all users (all-time)", "gauge", round(fin_all["expense_total"], 2)))
+        lines.append(_prom_line("ledger_fin_savings_total", "Total savings across all users (all-time)", "gauge", round(fin_all["savings_total"], 2)))
+        lines.append(_prom_line("ledger_fin_savings_rate_pct", "Savings rate percentage across all users (all-time)", "gauge", round(fin_all["savings_rate_pct"], 3)))
+        lines.append(_prom_line("ledger_fin_assets_total", "Total asset value across all users (all-time)", "gauge", round(fin_all["assets_total"], 2)))
+        lines.append(_prom_line("ledger_fin_liabilities_total", "Total liabilities across all users (all-time)", "gauge", round(fin_all["liabilities_total"], 2)))
+        lines.append(_prom_line("ledger_fin_investments_total", "Total investments across all users (all-time)", "gauge", round(fin_all["investment_total"], 2)))
+        lines.append(_prom_line("ledger_fin_net_worth_total", "Net worth across all users (all-time)", "gauge", round(fin_all["net_worth_total"], 2)))
+        lines.append(_prom_line("ledger_fin_goals_target_total", "Goals target across all users (all-time)", "gauge", round(fin_all["goals_target_total"], 2)))
+        lines.append(_prom_line("ledger_fin_goals_current_total", "Goals current across all users (all-time)", "gauge", round(fin_all["goals_current_total"], 2)))
+        lines.append(_prom_line("ledger_fin_goals_gap_total", "Goals gap across all users (all-time)", "gauge", round(fin_all["goals_gap_total"], 2)))
+        lines.append(_prom_line("ledger_fin_goals_progress_pct", "Goals progress percentage across all users (all-time)", "gauge", round(fin_all["goals_progress_pct"], 3)))
+    except Exception:
+        lines.append(_prom_line("ledger_fin_metrics_up", "1 if financial KPI metrics are available, 0 otherwise", "gauge", 0))
+
     # ---- History snapshot count ----
     lines.append(_prom_line("ledger_insights_history_snapshots", "Number of in-memory App Insights snapshots retained", "gauge", len(APP_INSIGHTS_HISTORY)))
+
+    # ---- Network Traffic ----
+    lines.append(_prom_line("ledger_network_inbound_total", "Total inbound HTTP requests logged since startup", "counter", _NETWORK_COUNTERS["inbound_total"]))
+    lines.append(_prom_line("ledger_network_inbound_blocked_total", "Total inbound requests blocked by firewall since startup", "counter", _NETWORK_COUNTERS["inbound_blocked"]))
+    lines.append(_prom_line("ledger_network_outbound_total", "Total outbound connection attempts logged since startup", "counter", _NETWORK_COUNTERS["outbound_total"]))
+    lines.append(_prom_line("ledger_network_outbound_blocked_total", "Total outbound requests blocked by firewall since startup", "counter", _NETWORK_COUNTERS["outbound_blocked"]))
+    with _NETWORK_LOG_LOCK:
+        lines.append(_prom_line("ledger_network_inbound_log_size", "Number of inbound log entries currently retained", "gauge", len(_INBOUND_TRAFFIC_LOG)))
+        lines.append(_prom_line("ledger_network_outbound_log_size", "Number of outbound log entries currently retained", "gauge", len(_OUTBOUND_TRAFFIC_LOG)))
 
     body = "".join(line for line in lines if line)
     return PlainTextResponse(content=body, media_type="text/plain; version=0.0.4; charset=utf-8")
@@ -2855,6 +4533,7 @@ def upload_transactions_csv(
             amount = float(row.get('amount'))
         except Exception:
             raise HTTPException(status_code=400, detail=f"Invalid amount on row {idx}: {row.get('amount')}")
+        normalized_amount = _normalize_money_amount(amount)
 
         notes = row.get('notes', '').strip() if row.get('notes') else ''
         recurring_value = row.get('recurring', '').strip().lower()
@@ -2871,7 +4550,7 @@ def upload_transactions_csv(
             user_id=current_user.id,
             type=TransactionType(tx_type),
             description=row.get('description').strip(),
-            amount=amount,
+            amount=normalized_amount,
             category=row.get('category').strip(),
             date=transaction_date,
             notes=notes,
@@ -2882,6 +4561,8 @@ def upload_transactions_csv(
         )
 
         db.add(db_transaction)
+        db.flush()
+        _post_double_entry_ledger(db, db_transaction, normalized_amount)
         created_transactions.append(db_transaction)
 
     db.commit()
@@ -2959,6 +4640,12 @@ def upload_statement_file(
             skipped_count += 1
             continue
 
+        try:
+            normalized_entry_amount = _normalize_money_amount(entry["amount"])
+        except HTTPException:
+            skipped_count += 1
+            continue
+
         salary_cycle_tag = f" {STATEMENT_SALARY_NEXT_MONTH_TAG}" if _is_salary_credit_for_next_month(entry) else ""
         adjustment_tag = f" {STATEMENT_NON_INCOME_CREDIT_TAG}" if entry.get("is_credit_adjustment") else ""
         balance_reconciled_tag = f" {STATEMENT_BALANCE_RECONCILED_TAG}" if entry.get("balance_reconciled") else ""
@@ -2967,7 +4654,7 @@ def upload_statement_file(
             user_id=current_user.id,
             type=TransactionType(str(entry["type"])),
             description=str(entry["description"]),
-            amount=float(entry["amount"]),
+            amount=normalized_entry_amount,
             category=str(entry["category"]),
             date=entry["date"],
             notes=f"Imported from statement file ({file.filename}) {document_tag} [{fingerprint}]{salary_cycle_tag}{adjustment_tag}{balance_reconciled_tag}",
@@ -2977,6 +4664,8 @@ def upload_statement_file(
             source="statement_import"
         )
         db.add(db_transaction)
+        db.flush()
+        _post_double_entry_ledger(db, db_transaction, normalized_entry_amount)
         imported_transactions.append(db_transaction)
         existing_fingerprints.add(fingerprint)
 
@@ -3068,25 +4757,141 @@ def upload_statement_file(
 def create_transaction(
     transaction: TransactionCreate,
     request: Request,
+    x_idempotency_key: str = Header(..., alias="X-Idempotency-Key"),
     current_user: User = Depends(require_write_access),
     db: Session = Depends(get_db)
 ):
     """Create a new transaction"""
+    normalized_amount = _normalize_money_amount(transaction.amount)
+    idempotency_key = (x_idempotency_key or "").strip()
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="X-Idempotency-Key header is required")
+    if len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="X-Idempotency-Key must be 128 characters or fewer")
+
+    existing_transaction = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.idempotency_key == idempotency_key,
+    ).first()
+    if existing_transaction:
+        return existing_transaction
+
+    create_payload = transaction.model_dump()
+    create_payload["amount"] = normalized_amount
+
     db_transaction = Transaction(
-        **transaction.dict(),
-        user_id=current_user.id
+        **create_payload,
+        user_id=current_user.id,
+        idempotency_key=idempotency_key,
     )
     db.add(db_transaction)
+    db.flush()
+    _post_double_entry_ledger(db, db_transaction, normalized_amount)
     db.commit()
     db.refresh(db_transaction)
     
     # Log audit
     log_audit(db, current_user.id, "create", "transaction", db_transaction.id,
               f"Created transaction: {transaction.description}",
-              details=transaction.dict(),
+              details={**create_payload, "idempotency_key": idempotency_key},
               user_agent=request.headers.get("user-agent"))
     
     return db_transaction
+
+
+@app.post("/api/transactions/{transaction_id}/reverse", response_model=TransactionSchema)
+def reverse_transaction(
+    transaction_id: int,
+    request: Request,
+    reversal: Optional[TransactionReversalRequest] = None,
+    x_idempotency_key: str = Header(..., alias="X-Idempotency-Key"),
+    current_user: User = Depends(require_write_access),
+    db: Session = Depends(get_db)
+):
+    """Create a compensating reversal transaction for an existing transaction."""
+    idempotency_key = (x_idempotency_key or "").strip()
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="X-Idempotency-Key header is required")
+    if len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="X-Idempotency-Key must be 128 characters or fewer")
+
+    existing_by_key = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.idempotency_key == idempotency_key,
+    ).first()
+    if existing_by_key:
+        return existing_by_key
+
+    original_tx = db.query(Transaction).filter(
+        Transaction.id == transaction_id,
+        Transaction.user_id == current_user.id,
+    ).first()
+    if not original_tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    if (original_tx.source or "").strip().lower() == "reversal":
+        raise HTTPException(status_code=400, detail="Cannot reverse a reversal transaction")
+
+    marker = f"reversal_of_tx_id:{original_tx.id}"
+    existing_reversal = db.query(Transaction).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.source == "reversal",
+        Transaction.notes.isnot(None),
+        Transaction.notes.contains(marker),
+    ).order_by(Transaction.created_at.desc()).first()
+    if existing_reversal:
+        return existing_reversal
+
+    original_type = original_tx.type.value if hasattr(original_tx.type, "value") else str(original_tx.type)
+    if original_type == TransactionType.EXPENSE.value:
+        reversal_type = TransactionType.INCOME
+    elif original_type == TransactionType.INCOME.value:
+        reversal_type = TransactionType.EXPENSE
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported transaction type for reversal")
+
+    normalized_amount = _normalize_money_amount(original_tx.amount)
+    reason = (reversal.reason.strip() if reversal and reversal.reason else "")
+    reversal_notes = marker if not reason else f"{marker} reason:{reason}"
+
+    reversal_tx = Transaction(
+        user_id=current_user.id,
+        type=reversal_type,
+        description=f"Reversal: {original_tx.description}",
+        amount=normalized_amount,
+        category=original_tx.category,
+        date=datetime.now(timezone.utc).replace(tzinfo=None),
+        notes=reversal_notes,
+        recurring=False,
+        spread_over_year=False,
+        synced=False,
+        source="reversal",
+        idempotency_key=idempotency_key,
+    )
+    db.add(reversal_tx)
+    db.flush()
+    _post_double_entry_ledger(db, reversal_tx, normalized_amount)
+    db.commit()
+    db.refresh(reversal_tx)
+
+    log_audit(
+        db,
+        current_user.id,
+        "create",
+        "transaction",
+        reversal_tx.id,
+        f"Created reversal transaction for original transaction {original_tx.id}",
+        details={
+            "reversal_transaction_id": reversal_tx.id,
+            "original_transaction_id": original_tx.id,
+            "amount": normalized_amount,
+            "reason": reason or None,
+            "idempotency_key": idempotency_key,
+        },
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    return reversal_tx
 
 
 @app.put("/api/transactions/{transaction_id}", response_model=TransactionSchema)
@@ -3098,6 +4903,12 @@ def update_transaction(
     db: Session = Depends(get_db)
 ):
     """Update a transaction"""
+    if ENFORCE_IMMUTABLE_TRANSACTIONS:
+        raise HTTPException(
+            status_code=409,
+            detail="Transactions are immutable. Create a compensating transaction instead of editing.",
+        )
+
     db_transaction = db.query(Transaction).filter(
         Transaction.id == transaction_id,
         Transaction.user_id == current_user.id
@@ -3117,7 +4928,10 @@ def update_transaction(
     
     # Update fields
     try:
-        update_data = transaction.dict(exclude_unset=True)
+        update_data = transaction.model_dump(exclude_unset=True)
+
+        if 'amount' in update_data:
+            update_data['amount'] = _normalize_money_amount(update_data['amount'])
 
         # Replace string values and date field with parsed datetime in case incoming API sends date string
         if 'date' in update_data and isinstance(update_data['date'], str):
@@ -3252,7 +5066,7 @@ def export_all_data_csv(
         normalized = {key: row.get(key, "") for key in EXPORT_COLUMNS}
         writer.writerow(normalized)
 
-    filename = f"ledger-export-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
+    filename = f"ledger-export-{_utcnow_naive().strftime('%Y%m%d-%H%M%S')}.csv"
     from fastapi.responses import Response
     return Response(
         content=output.getvalue(),
@@ -3298,10 +5112,16 @@ def import_all_data_csv(
                 skipped += 1
                 continue
 
+            try:
+                normalized_row_amount = _normalize_money_amount(_csv_to_float(row.get("amount")))
+            except HTTPException:
+                skipped += 1
+                continue
+
             payload = {
                 "type": transaction_type,
                 "description": row.get("description") or "",
-                "amount": _csv_to_float(row.get("amount")),
+                "amount": normalized_row_amount,
                 "category": row.get("category") or "Other",
                 "date": _csv_to_datetime(row.get("date")),
                 "notes": row.get("notes") or None,
@@ -3312,14 +5132,23 @@ def import_all_data_csv(
             if row_id:
                 existing = db.query(Transaction).filter(Transaction.user_id == current_user.id, Transaction.id == row_id).first()
                 if existing:
+                    if ENFORCE_IMMUTABLE_TRANSACTIONS:
+                        skipped += 1
+                        continue
                     for key, value in payload.items():
                         setattr(existing, key, value)
                     updated += 1
                 else:
-                    db.add(Transaction(id=row_id, user_id=current_user.id, synced=False, **payload))
+                    created_transaction = Transaction(id=row_id, user_id=current_user.id, synced=False, **payload)
+                    db.add(created_transaction)
+                    db.flush()
+                    _post_double_entry_ledger(db, created_transaction, payload["amount"])
                     created += 1
             else:
-                db.add(Transaction(user_id=current_user.id, synced=False, **payload))
+                created_transaction = Transaction(user_id=current_user.id, synced=False, **payload)
+                db.add(created_transaction)
+                db.flush()
+                _post_double_entry_ledger(db, created_transaction, payload["amount"])
                 created += 1
 
         elif section == "investment":
@@ -3503,7 +5332,7 @@ def gmail_oauth_callback(
         GOOGLE_USERINFO_URL,
         headers={"Authorization": f"Bearer {access_token}"},
     )
-    token_payload["expires_at"] = (datetime.utcnow() + timedelta(seconds=int(token_payload.get("expires_in", 3600)) - 60)).isoformat()
+    token_payload["expires_at"] = (_utcnow_naive() + timedelta(seconds=int(token_payload.get("expires_in", 3600)) - 60)).isoformat()
 
     integration = _upsert_gmail_integration(
         db=db,
@@ -3622,7 +5451,7 @@ def sync_gmail_bank_alerts(
             continue
 
         # Parse email date, fall back to now
-        tx_date = datetime.utcnow()
+        tx_date = _utcnow_naive()
         if date_str:
             for fmt in (
                 "%a, %d %b %Y %H:%M:%S %z",
@@ -3638,11 +5467,16 @@ def sync_gmail_bank_alerts(
         tx_type = TransactionType.EXPENSE if parsed["type"] == "expense" else TransactionType.INCOME
         note_tag = f"gmail_msg_id:{msg_id}"
 
+        try:
+            normalized_amount = _normalize_money_amount(parsed["amount"])
+        except HTTPException:
+            skipped += 1
+            continue
         tx = Transaction(
             user_id=current_user.id,
             type=tx_type,
             description=parsed["description"],
-            amount=parsed["amount"],
+            amount=normalized_amount,
             category=parsed["category"],
             date=tx_date,
             notes=note_tag,
@@ -3650,6 +5484,8 @@ def sync_gmail_bank_alerts(
             source="gmail",
         )
         db.add(tx)
+        db.flush()
+        _post_double_entry_ledger(db, tx, normalized_amount)
         imported_ids.add(msg_id)
         imported += 1
         imported_txns.append({
@@ -3661,7 +5497,7 @@ def sync_gmail_bank_alerts(
         })
 
     if imported > 0:
-        integration.last_sync = datetime.utcnow()
+        integration.last_sync = _utcnow_naive()
         db.commit()
 
     log_audit(
@@ -3828,6 +5664,12 @@ def delete_transaction(
     db: Session = Depends(get_db)
 ):
     """Delete a transaction"""
+    if ENFORCE_IMMUTABLE_TRANSACTIONS:
+        raise HTTPException(
+            status_code=409,
+            detail="Transactions are immutable. Create a compensating transaction instead of deleting.",
+        )
+
     db_transaction = db.query(Transaction).filter(
         Transaction.id == transaction_id,
         Transaction.user_id == current_user.id
@@ -3873,7 +5715,7 @@ def create_budget(
     """Create a new budget"""
     payload = budget.dict()
     if not payload.get("start_month"):
-        payload["start_month"] = datetime.utcnow().strftime("%Y-%m")
+        payload["start_month"] = _utcnow_naive().strftime("%Y-%m")
     db_budget = Budget(**payload, user_id=current_user.id)
     db.add(db_budget)
     db.commit()
@@ -3950,7 +5792,7 @@ def get_budgets_with_spending(
     db: Session = Depends(get_db)
 ):
     """Get all budgets with current month/year spending details based on budget period"""
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
     
@@ -4087,6 +5929,167 @@ def delete_goal(
               user_agent=request.headers.get("user-agent"))
 
     return db_goal
+
+
+# ==================== Event Endpoints ====================
+
+@app.get("/api/events", response_model=List[EventSchema])
+def get_events(
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get events for current user, optionally filtered by date range overlap."""
+    query = db.query(Event).filter(Event.user_id == current_user.id)
+
+    if from_date and to_date:
+        query = query.filter(
+            Event.start_date <= to_date,
+            func.coalesce(Event.end_date, Event.start_date) >= from_date
+        )
+    elif from_date:
+        query = query.filter(func.coalesce(Event.end_date, Event.start_date) >= from_date)
+    elif to_date:
+        query = query.filter(Event.start_date <= to_date)
+
+    return query.order_by(Event.start_date.asc(), Event.id.asc()).all()
+
+
+@app.get("/api/events/holidays")
+def get_event_holidays(
+    year: int,
+    country: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Proxy public holiday lookup through the backend so firewall rules apply uniformly."""
+    normalized_country = (country or "").strip().upper()
+    if year < 2000 or year > 2100:
+        raise HTTPException(status_code=400, detail="year must be between 2000 and 2100")
+    if len(normalized_country) != 2 or not normalized_country.isalpha():
+        raise HTTPException(status_code=400, detail="country must be a 2-letter region code")
+
+    holiday_url = f"https://date.nager.at/api/v3/PublicHolidays/{year}/{normalized_country}"
+    _ensure_outbound_allowed_for_url(holiday_url, "holiday calendar lookup")
+
+    request_obj = UrlRequest(holiday_url, headers={"User-Agent": "ledger-events-holidays"}, method="GET")
+    try:
+        with urlopen(request_obj, timeout=10) as response:
+            payload = response.read().decode("utf-8", errors="ignore")
+        return JSONResponse(content=json.loads(payload))
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore") if getattr(exc, "fp", None) else ""
+        detail = body or exc.reason or "Failed to load holiday calendar"
+        raise HTTPException(status_code=exc.code, detail=detail) from exc
+    except URLError as exc:
+        raise HTTPException(status_code=503, detail=f"Holiday calendar connection failed: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="Holiday provider returned invalid JSON") from exc
+
+
+@app.post("/api/events", response_model=EventSchema)
+def create_event(
+    event: EventCreate,
+    request: Request,
+    current_user: User = Depends(require_write_access),
+    db: Session = Depends(get_db)
+):
+    """Create a new event."""
+    if event.end_date and event.end_date < event.start_date:
+        raise HTTPException(status_code=400, detail="end_date cannot be before start_date")
+
+    db_event = Event(**event.dict(), user_id=current_user.id)
+    db.add(db_event)
+    db.commit()
+    db.refresh(db_event)
+
+    log_audit(
+        db,
+        current_user.id,
+        "create",
+        "event",
+        db_event.id,
+        f"Created event: {db_event.title}",
+        details=event.dict(),
+        user_agent=request.headers.get("user-agent")
+    )
+
+    return db_event
+
+
+@app.put("/api/events/{event_id}", response_model=EventSchema)
+def update_event(
+    event_id: int,
+    event_update: EventUpdate,
+    request: Request,
+    current_user: User = Depends(require_write_access),
+    db: Session = Depends(get_db)
+):
+    """Update an existing event."""
+    db_event = db.query(Event).filter(
+        Event.user_id == current_user.id,
+        Event.id == event_id
+    ).first()
+
+    if not db_event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    payload = event_update.dict(exclude_unset=True)
+    merged_start = payload.get("start_date", db_event.start_date)
+    merged_end = payload.get("end_date", db_event.end_date)
+    if merged_end and merged_end < merged_start:
+        raise HTTPException(status_code=400, detail="end_date cannot be before start_date")
+
+    for field, value in payload.items():
+        setattr(db_event, field, value)
+
+    db.commit()
+    db.refresh(db_event)
+
+    log_audit(
+        db,
+        current_user.id,
+        "update",
+        "event",
+        db_event.id,
+        f"Updated event: {db_event.title}",
+        details=payload,
+        user_agent=request.headers.get("user-agent")
+    )
+
+    return db_event
+
+
+@app.delete("/api/events/{event_id}", response_model=EventSchema)
+def delete_event(
+    event_id: int,
+    request: Request,
+    current_user: User = Depends(require_write_access),
+    db: Session = Depends(get_db)
+):
+    """Delete an event."""
+    db_event = db.query(Event).filter(
+        Event.user_id == current_user.id,
+        Event.id == event_id
+    ).first()
+
+    if not db_event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    db.delete(db_event)
+    db.commit()
+
+    log_audit(
+        db,
+        current_user.id,
+        "delete",
+        "event",
+        event_id,
+        f"Deleted event: {db_event.title}",
+        user_agent=request.headers.get("user-agent")
+    )
+
+    return db_event
 
 
 # ==================== Investment Endpoints ====================
@@ -4353,7 +6356,7 @@ def create_integration(
         db_integration.connected = True
         db_integration.api_key = integration.api_key
         db_integration.sync_frequency = integration.sync_frequency
-        db_integration.last_sync = datetime.utcnow()
+        db_integration.last_sync = _utcnow_naive()
         action = "update"
     else:
         # Create new
@@ -4361,7 +6364,7 @@ def create_integration(
             **integration.dict(),
             user_id=current_user.id,
             connected=True,
-            last_sync=datetime.utcnow()
+            last_sync=_utcnow_naive()
         )
         db.add(db_integration)
         action = "create"
@@ -4408,7 +6411,7 @@ def update_integration(
         db_integration.api_key = None
 
     if db_integration.connected:
-        db_integration.last_sync = datetime.utcnow()
+        db_integration.last_sync = _utcnow_naive()
 
     db.commit()
     db.refresh(db_integration)
@@ -4479,27 +6482,34 @@ def sync_integration(
         tx_type = trans_data.get("type") or trans_data.get("transaction_type") or "expense"
         tx_date = trans_data.get("date") or trans_data.get("timestamp")
 
+        try:
+            normalized_amount = _normalize_money_amount(trans_data.get("amount") or 0)
+        except HTTPException:
+            continue
+
         # Ensure date is parsable (fallback to now)
         try:
-            parsed_date = datetime.fromisoformat(tx_date) if tx_date else datetime.utcnow()
+            parsed_date = datetime.fromisoformat(tx_date) if tx_date else _utcnow_naive()
         except Exception:
-            parsed_date = datetime.utcnow()
+            parsed_date = _utcnow_naive()
 
         db_transaction = Transaction(
             user_id=current_user.id,
             synced=True,
             source=app_name,
             date=parsed_date,
-            type=tx_type,
+            type=TransactionType(tx_type) if str(tx_type).lower() in ("income", "expense") else TransactionType.EXPENSE,
             description=trans_data.get("description") or "Imported transaction",
-            amount=float(trans_data.get("amount") or 0),
+            amount=normalized_amount,
             category=trans_data.get("category") or "Imported",
             notes=trans_data.get("notes") or None
         )
         db.add(db_transaction)
+        db.flush()
+        _post_double_entry_ledger(db, db_transaction, normalized_amount)
         synced_transactions.append(db_transaction)
 
-    integration.last_sync = datetime.utcnow()
+    integration.last_sync = _utcnow_naive()
     db.commit()
 
     log_audit(db, current_user.id, "sync", "transaction", app_name,
@@ -4511,6 +6521,20 @@ def sync_integration(
 
 
 # ==================== Audit Log Endpoints ====================
+
+@app.get("/api/ledger", response_model=List[LedgerEntrySchema])
+def get_ledger_entries(
+    skip: int = 0,
+    limit: int = 200,
+    transaction_id: Optional[int] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get append-only ledger entries for current user."""
+    query = db.query(LedgerEntry).filter(LedgerEntry.user_id == current_user.id)
+    if transaction_id is not None:
+        query = query.filter(LedgerEntry.transaction_id == transaction_id)
+    return query.order_by(LedgerEntry.created_at.desc(), LedgerEntry.id.desc()).offset(skip).limit(limit).all()
 
 @app.get("/api/audit-logs", response_model=List[AuditLogSchema])
 def get_audit_logs(
@@ -4535,21 +6559,38 @@ def get_dashboard_stats(
 ):
     """Get dashboard statistics"""
     # Get current month transactions
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
     transactions = db.query(Transaction).filter(
         Transaction.user_id == current_user.id,
         Transaction.date >= start_of_month
     ).all()
+
+    def _txn_type(value: object) -> str:
+        if hasattr(value, "value"):
+            return str(getattr(value, "value") or "").strip().lower()
+        return str(value or "").strip().lower()
     
-    income = sum(t.amount for t in transactions if t.type == "income")
-    expenses = sum(t.amount for t in transactions if t.type == "expense")
+    income = sum(t.amount for t in transactions if _txn_type(t.type) == "income")
+    expenses = sum(t.amount for t in transactions if _txn_type(t.type) == "expense")
     balance = income - expenses
     savings_rate = (balance / income * 100) if income > 0 else 0
     
     budget_count = db.query(Budget).filter(Budget.user_id == current_user.id).count()
     goal_count = db.query(Goal).filter(Goal.user_id == current_user.id).count()
+    today = now.date()
+    seven_days_out = today + timedelta(days=7)
+    upcoming_event_count = db.query(Event).filter(
+        Event.user_id == current_user.id,
+        Event.start_date >= today,
+        Event.start_date <= seven_days_out,
+    ).count()
+    next_event = db.query(Event).filter(
+        Event.user_id == current_user.id,
+        Event.start_date >= today,
+    ).order_by(Event.start_date.asc(), Event.id.asc()).first()
+    next_upcoming_event = next_event.title if next_event else None
     
     # Calculate budget spending
     budgets = db.query(Budget).filter(Budget.user_id == current_user.id).all()
@@ -4573,7 +6614,7 @@ def get_dashboard_stats(
         # Calculate spending for this category in the specified period
         category_spending = db.query(Transaction).filter(
             Transaction.user_id == current_user.id,
-            Transaction.type == "expense",
+            func.lower(Transaction.type) == "expense",
             Transaction.category == budget.category,
             Transaction.date >= start_date
         ).all()
@@ -4613,6 +6654,8 @@ def get_dashboard_stats(
         transaction_count=len(transactions),
         budget_count=budget_count,
         goal_count=goal_count,
+        upcoming_event_count=upcoming_event_count,
+        next_upcoming_event=next_upcoming_event,
         budgets_with_spending=budgets_with_spending_list,
         total_budget_limit=round(total_budget_limit, 2),
         total_budget_spent=round(total_budget_spent, 2),
@@ -4634,7 +6677,7 @@ def get_financial_insights(
     budget utilisation, top spending categories, investment summary,
     and goal progress for the last `months` calendar months (default 6).
     """
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     # ── Current month ─────────────────────────────────────────────────────────
@@ -4874,7 +6917,7 @@ def record_insights_snapshot():
         
         # Create and save the metric record
         metric = AppInsightsMetric(
-            recorded_at=datetime.utcnow(),
+            recorded_at=_utcnow_naive(),
             # Backend metrics
             backend_active_requests=APP_INSIGHTS_STATE["active_requests"],
             backend_errors_5xx=APP_INSIGHTS_STATE["errors_5xx"],
@@ -4922,7 +6965,6 @@ def background_insights_recorder():
         time.sleep(30)  # Record every 30 seconds
 
 
-@app.on_event("startup")
 def startup_insights_recording():
     """Start the background insights recording task on app startup."""
     ensure_superadmin_account()
@@ -4934,7 +6976,6 @@ def startup_insights_recording():
         print("App Insights historical recording started (30s interval)")
 
 
-@app.on_event("shutdown")
 def shutdown_insights_recording():
     """Stop the background insights recording task on app shutdown."""
     global insights_recording_active
@@ -4947,7 +6988,7 @@ def shutdown_insights_recording():
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "timestamp": datetime.utcnow()}
+    return {"status": "healthy", "timestamp": _utcnow_naive()}
 
 
 if __name__ == "__main__":

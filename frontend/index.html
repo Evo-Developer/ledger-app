@@ -4,7 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FinApp - Login</title>
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="FinApp">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/assets/FinApp.png">
     <link rel="icon" type="image/png" href="./assets/FinApp.png">
+    <link rel="preload" href="/assets/FinApp.png" as="image">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * {
@@ -83,6 +93,27 @@
         .tagline {
             color: var(--text-secondary);
             font-size: 15px;
+        }
+
+        .install-app-btn {
+            margin-top: 14px;
+            border: none;
+            border-radius: 999px;
+            background: var(--gradient-primary);
+            color: #ffffff;
+            padding: 9px 14px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            display: none;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            box-shadow: var(--shadow);
+        }
+
+        .install-app-btn:hover {
+            filter: brightness(1.04);
         }
 
         .auth-card {
@@ -386,6 +417,7 @@
                 <img src="./assets/FinApp.png" alt="FinApp" />
             </div>
             <div class="tagline">Track your finances with clarity</div>
+            <button type="button" id="installAppBtn" class="install-app-btn" onclick="handleInstallApp()">📲 Install App</button>
         </div>
 
         <div class="auth-card">
@@ -414,13 +446,49 @@
                     <label class="form-label">Password</label>
                     <input type="password" class="form-input" id="loginPassword" required placeholder="Enter your password">
                 </div>
+                <div class="form-group" id="loginMfaGroup" style="display: none;">
+                    <label class="form-label">Authenticator Code</label>
+                    <input type="text" class="form-input" id="loginMfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6-digit MFA code">
+                    <div class="helper-text" id="loginMfaHint" style="margin-top: 6px;">Enter the 6-digit code from your authenticator app.</div>
+                </div>
                 <button type="submit" class="btn" id="loginBtn">
                     Sign In
                 </button>
                 <div class="helper-text">
                     First time here? Switch to Register tab to create an account.
                 </div>
+                <div style="text-align:center; margin-top: 12px;">
+                    <button type="button" onclick="showForgotPassword()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:13px;font-family:inherit;text-decoration:underline;padding:0;">Forgot password?</button>
+                </div>
             </form>
+
+            <!-- Forgot Password Form -->
+            <div id="forgotPasswordPanel" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label">Enter your account email address</label>
+                    <input type="email" class="form-input" id="forgotEmail" placeholder="you@example.com" autocomplete="email">
+                </div>
+                <button type="button" class="btn" id="forgotBtn" onclick="handleForgotPassword()">Send Reset Link</button>
+                <div class="helper-text" style="margin-top: 14px;">
+                    <button type="button" onclick="hideForgotPassword()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:13px;font-family:inherit;text-decoration:underline;padding:0;">← Back to Login</button>
+                </div>
+            </div>
+
+            <!-- Reset Password Form -->
+            <div id="resetPasswordPanel" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label">New Password</label>
+                    <input type="password" class="form-input" id="resetNewPassword" placeholder="Enter new password" minlength="8" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Confirm New Password</label>
+                    <input type="password" class="form-input" id="resetConfirmPassword" placeholder="Confirm new password" minlength="8" autocomplete="new-password">
+                </div>
+                <button type="button" class="btn" id="resetBtn" onclick="handleResetPassword()">Set New Password</button>
+                <div class="helper-text" style="margin-top: 14px;">
+                    <a onclick="hideForgotPassword()" style="color:var(--accent);cursor:pointer;font-size:13px;text-decoration:underline;">← Back to Login</a>
+                </div>
+            </div>
 
             <!-- Register Form -->
             <form id="registerForm" class="auth-form" onsubmit="handleRegister(event)">
@@ -462,6 +530,7 @@
 
     <script>
         let currentLoginMode = 'user';
+        let mfaChallengeActive = false;
 
         function getApiBaseUrls() {
             const urls = [];
@@ -543,10 +612,14 @@
                         lastError = new Error(errorMessage);
                         continue;
                     }
-
-                    throw new Error(errorMessage);
+                    const requestError = new Error(errorMessage);
+                    requestError.status = response.status;
+                    throw requestError;
                 } catch (error) {
                     lastError = error;
+                    if (error && error.status) {
+                        throw error;
+                    }
                     if (index === baseUrls.length - 1) {
                         throw error;
                     }
@@ -643,11 +716,30 @@
             document.getElementById('successMessage').classList.remove('show');
         }
 
+        function setMfaChallenge(active, message = '') {
+            mfaChallengeActive = !!active;
+            const group = document.getElementById('loginMfaGroup');
+            const codeInput = document.getElementById('loginMfaCode');
+            const hint = document.getElementById('loginMfaHint');
+            const btn = document.getElementById('loginBtn');
+
+            if (group) group.style.display = mfaChallengeActive ? '' : 'none';
+            if (!mfaChallengeActive && codeInput) codeInput.value = '';
+            if (hint && message) hint.textContent = message;
+            if (btn) {
+                btn.textContent = mfaChallengeActive
+                    ? (currentLoginMode === 'admin' ? 'Verify Admin MFA' : 'Verify MFA')
+                    : (currentLoginMode === 'admin' ? 'Sign In as Admin' : 'Sign In');
+            }
+        }
+
         async function handleLogin(e) {
             e.preventDefault();
             
             const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
+                const mfaCodeInput = document.getElementById('loginMfaCode');
+                const mfaCode = mfaCodeInput ? mfaCodeInput.value.trim() : '';
             const btn = document.getElementById('loginBtn');
 
             btn.disabled = true;
@@ -659,6 +751,9 @@
                 formData.append('grant_type', 'password');
                 formData.append('username', username);
                 formData.append('password', password);
+                if (mfaCode) {
+                    formData.append('mfa_code', mfaCode);
+                }
 
                 const { data } = await fetchApi('/auth/login', {
                     method: 'POST',
@@ -667,9 +762,20 @@
                     },
                     body: formData
                 });
+
+                if (data && data.mfa_required && !data.access_token) {
+                    setMfaChallenge(true, data.mfa_message || 'Enter the code from your authenticator app to continue.');
+                    showError(data.mfa_message || 'MFA code required');
+                    if (mfaCodeInput) {
+                        mfaCodeInput.focus();
+                        mfaCodeInput.select();
+                    }
+                    return;
+                }
                 
                 // Store token
                 localStorage.setItem('token', data.access_token);
+                setMfaChallenge(false);
                 
                 // Show success and redirect
                 showSuccess('Login successful! Redirecting...');
@@ -678,9 +784,44 @@
                 }, 1000);
 
             } catch (error) {
-                showError(error.message);
+                const message = error.message || 'Login failed';
+                const blockedOrDisabled = error.status === 403 || /blocked|disabled|inactive user account/i.test(message);
+                const invalidCredentials = error.status === 401 || /invalid credentials|incorrect username|incorrect password|invalid username/i.test(message);
+                const requiresMfa = /mfa code required/i.test(message);
+                const invalidMfa = /invalid mfa code/i.test(message);
+
+                if (blockedOrDisabled) {
+                    setMfaChallenge(false);
+                    showError('User account is blocked or disabled. Please contact an administrator.');
+                } else if (invalidCredentials) {
+                    setMfaChallenge(false);
+                    showError('Username or password is incorrect.');
+                } else if (requiresMfa) {
+                    setMfaChallenge(true, 'Enter the code from your authenticator app to continue.');
+                    showError('MFA code required');
+                    if (mfaCodeInput) {
+                        mfaCodeInput.focus();
+                    }
+                } else if (invalidMfa) {
+                    setMfaChallenge(true, 'The code was not accepted. Enter a fresh code and try again.');
+                    showError('Invalid MFA code');
+                    if (mfaCodeInput) {
+                        mfaCodeInput.focus();
+                        mfaCodeInput.select();
+                    }
+                } else {
+                    setMfaChallenge(false);
+                    showError(message);
+                }
                 btn.disabled = false;
-                btn.innerHTML = 'Sign In';
+                btn.textContent = mfaChallengeActive
+                    ? (currentLoginMode === 'admin' ? 'Verify Admin MFA' : 'Verify MFA')
+                    : (currentLoginMode === 'admin' ? 'Sign In as Admin' : 'Sign In');
+            }
+            if (loginBtn) {
+                loginBtn.textContent = mfaChallengeActive
+                    ? (currentLoginMode === 'admin' ? 'Verify Admin MFA' : 'Verify MFA')
+                    : (currentLoginMode === 'admin' ? 'Sign In as Admin' : 'Sign In');
             }
         }
 
@@ -779,7 +920,7 @@
             }
         }
 
-        ['loginUsername', 'loginPassword'].forEach((id) => {
+        ['loginUsername', 'loginPassword', 'loginMfaCode'].forEach((id) => {
             const input = document.getElementById(id);
             if (!input) return;
 
@@ -790,7 +931,159 @@
             });
         });
 
+        function updateInstallAppButton() {
+            const btn = document.getElementById('installAppBtn');
+            if (!btn || !window.getPwaInstallState) return;
+
+            const installState = window.getPwaInstallState();
+            if (installState.isStandalone) {
+                btn.style.display = 'none';
+                return;
+            }
+
+            if (installState.canInstall) {
+                btn.textContent = '📲 Install App';
+                btn.style.display = 'inline-flex';
+                return;
+            }
+
+            if (installState.isIos) {
+                btn.textContent = '📲 Add to Home Screen';
+                btn.style.display = 'inline-flex';
+                return;
+            }
+
+            btn.style.display = 'none';
+        }
+
+        async function handleInstallApp() {
+            if (!window.triggerPwaInstall) return;
+            const outcome = await window.triggerPwaInstall();
+
+            if (outcome === 'accepted') {
+                showSuccess('Install started.');
+            } else if (outcome === 'dismissed') {
+                showError('Install canceled.');
+            } else if (outcome === 'ios-instructions') {
+                showSuccess('Open Safari Share and tap Add to Home Screen.');
+            }
+        }
+
+        window.addEventListener('pwa-install-availability', updateInstallAppButton);
+        updateInstallAppButton();
+
         setLoginMode('user');
+        setMfaChallenge(false);
+
+        // --- Forgot / Reset Password ---
+
+        let _activeResetToken = null;
+
+        function showForgotPassword() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('forgotPasswordPanel').style.display = 'block';
+            document.getElementById('resetPasswordPanel').style.display = 'none';
+            document.querySelector('.auth-tabs').style.display = 'none';
+            hideMessages();
+            document.getElementById('forgotEmail').focus();
+        }
+
+        function hideForgotPassword() {
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('forgotPasswordPanel').style.display = 'none';
+            document.getElementById('resetPasswordPanel').style.display = 'none';
+            document.querySelector('.auth-tabs').style.display = 'flex';
+            hideMessages();
+            _activeResetToken = null;
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('reset_token')) {
+                url.searchParams.delete('reset_token');
+                history.replaceState(null, '', url);
+            }
+        }
+
+        async function handleForgotPassword() {
+            const email = (document.getElementById('forgotEmail').value || '').trim();
+            if (!email) {
+                showError('Please enter your email address.');
+                return;
+            }
+
+            const btn = document.getElementById('forgotBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Sending...';
+            hideMessages();
+
+            try {
+                await fetchApi('/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                showSuccess('If that email is registered, a reset link has been sent. Check your inbox.');
+            } catch (error) {
+                showError(error.message || 'Something went wrong. Please try again.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Send Reset Link';
+            }
+        }
+
+        async function handleResetPassword() {
+            const newPassword = (document.getElementById('resetNewPassword').value || '').trim();
+            const confirmPassword = (document.getElementById('resetConfirmPassword').value || '').trim();
+
+            if (!newPassword || !confirmPassword) {
+                showError('Please fill in both password fields.');
+                return;
+            }
+            if (newPassword.length < 8) {
+                showError('Password must be at least 8 characters.');
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                showError('Passwords do not match.');
+                return;
+            }
+
+            const btn = document.getElementById('resetBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Setting password...';
+            hideMessages();
+
+            try {
+                await fetchApi('/auth/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: _activeResetToken, new_password: newPassword })
+                });
+                showSuccess('Password updated successfully! Redirecting to login...');
+                setTimeout(() => {
+                    hideForgotPassword();
+                }, 2500);
+            } catch (error) {
+                showError(error.message || 'Failed to reset password. The link may have expired.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Set New Password';
+            }
+        }
+
+        (function checkResetToken() {
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('reset_token');
+            if (token) {
+                _activeResetToken = token;
+                document.getElementById('loginForm').style.display = 'none';
+                document.getElementById('forgotPasswordPanel').style.display = 'none';
+                document.getElementById('resetPasswordPanel').style.display = 'block';
+                document.querySelector('.auth-tabs').style.display = 'none';
+                const url = new URL(window.location.href);
+                url.searchParams.delete('reset_token');
+                history.replaceState(null, '', url);
+            }
+        })();
     </script>
+    <script src="/assets/pwa-register.js"></script>
 </body>
 </html>

@@ -21,7 +21,7 @@ set the integration's api_key to the correct URL.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -96,35 +96,35 @@ class SampleDataProvider(IntegrationProvider):
 
     SAMPLE_DATA = {
         "phonepe": [
-            {"description": "UPI to Swiggy", "amount": 450, "category": "Food", "type": "expense", "date": datetime.utcnow().isoformat()},
-            {"description": "DTH Recharge", "amount": 299, "category": "Bills", "type": "expense", "date": datetime.utcnow().isoformat()},
+            {"description": "UPI to Swiggy", "amount": 450, "category": "Food", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
+            {"description": "DTH Recharge", "amount": 299, "category": "Bills", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
         ],
         "groww": [
-            {"description": "Mutual Fund SIP", "amount": 5000, "category": "Investment", "type": "expense", "date": datetime.utcnow().isoformat()},
+            {"description": "Mutual Fund SIP", "amount": 5000, "category": "Investment", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
         ],
         "paytm": [
-            {"description": "Electricity Bill", "amount": 1200, "category": "Bills", "type": "expense", "date": datetime.utcnow().isoformat()},
+            {"description": "Electricity Bill", "amount": 1200, "category": "Bills", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
         ],
         "gpay": [
-            {"description": "Grocery UPI", "amount": 860, "category": "Food", "type": "expense", "date": datetime.utcnow().isoformat()},
+            {"description": "Grocery UPI", "amount": 860, "category": "Food", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
         ],
         "cred": [
-            {"description": "Credit card payment", "amount": 4500, "category": "Bills", "type": "expense", "date": datetime.utcnow().isoformat()},
+            {"description": "Credit card payment", "amount": 4500, "category": "Bills", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
         ],
         "zerodha": [
-            {"description": "Stock purchase", "amount": 15000, "category": "Investment", "type": "expense", "date": datetime.utcnow().isoformat()},
+            {"description": "Stock purchase", "amount": 15000, "category": "Investment", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
         ],
         "hdfc": [
-            {"description": "Salary Credit", "amount": 75000, "category": "Income", "type": "income", "date": datetime.utcnow().isoformat()},
-            {"description": "Grocery Shopping", "amount": 4200, "category": "Food", "type": "expense", "date": datetime.utcnow().isoformat()},
+            {"description": "Salary Credit", "amount": 75000, "category": "Income", "type": "income", "date": datetime.now(timezone.utc).isoformat()},
+            {"description": "Grocery Shopping", "amount": 4200, "category": "Food", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
         ],
         "sbi": [
-            {"description": "Utility Bill", "amount": 2200, "category": "Bills", "type": "expense", "date": datetime.utcnow().isoformat()},
-            {"description": "Interest Credit", "amount": 120, "category": "Income", "type": "income", "date": datetime.utcnow().isoformat()},
+            {"description": "Utility Bill", "amount": 2200, "category": "Bills", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
+            {"description": "Interest Credit", "amount": 120, "category": "Income", "type": "income", "date": datetime.now(timezone.utc).isoformat()},
         ],
         "icici": [
-            {"description": "Online Shopping", "amount": 3800, "category": "Shopping", "type": "expense", "date": datetime.utcnow().isoformat()},
-            {"description": "Cashback", "amount": 250, "category": "Income", "type": "income", "date": datetime.utcnow().isoformat()},
+            {"description": "Online Shopping", "amount": 3800, "category": "Shopping", "type": "expense", "date": datetime.now(timezone.utc).isoformat()},
+            {"description": "Cashback", "amount": 250, "category": "Income", "type": "income", "date": datetime.now(timezone.utc).isoformat()},
         ],
     }
 

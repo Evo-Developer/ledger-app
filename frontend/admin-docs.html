@@ -331,6 +331,32 @@ Grafana: http://localhost:3000  (admin / admin)`
   <li><code>grafana/provisioning/</code> — Auto-provisioned datasource + Ledger App Insights dashboard</li>
 </ul>`,
   },
+  {
+    id: 3, cat: 'Architecture', priority: 'critical', date: '2026-03-23',
+    title: 'C1, C2, C3 Architecture Diagrams (Full)',
+    tags: ['c1', 'c2', 'c3', 'diagrams'],
+    body: `<p>The complete architecture documentation is available in the markdown docs:</p>
+<ul>
+  <li><a href="/admin-docs-viewer.html?doc=ARCHITECTURE.md" target="_blank" rel="noopener">Open ARCHITECTURE.md</a></li>
+  <li>C1: System Context</li>
+  <li>C2: Container View</li>
+  <li>C3: Component View</li>
+  <li>Deployment and Scalability Strategy</li>
+</ul>
+<p>If you do not see this link working, restart frontend container so the admin-docs volume is mounted.</p>`,
+  },
+  {
+    id: 4, cat: 'Architecture', priority: 'high', date: '2026-03-23',
+    title: 'System Flow Charts and Operational Flows',
+    tags: ['flowcharts', 'workflow', 'operations'],
+    body: `<p>Detailed flow diagrams are available in:</p>
+<ul>
+  <li><a href="/admin-docs-viewer.html?doc=FLOW-DIAGRAMS.md" target="_blank" rel="noopener">Open FLOW-DIAGRAMS.md</a></li>
+  <li><a href="/admin-docs-viewer.html?doc=OPERATIONS-GUIDE.md" target="_blank" rel="noopener">Open OPERATIONS-GUIDE.md</a></li>
+  <li><a href="/admin-docs-viewer.html?doc=DEPLOYMENT.md" target="_blank" rel="noopener">Open DEPLOYMENT.md</a></li>
+</ul>
+<p>Includes multi-user request flow, fault recovery, lock handling, replication, and failover paths.</p>`,
+  },
   // ── API ENDPOINTS ─────────────────────────────────────────────────────────
   {
     id: 10, cat: 'API Reference', priority: 'critical', date: '2026-03-10',
@@ -765,6 +791,99 @@ curl -I https://localhost`
   <li>Removed "Columns" and "Import Full CSV" buttons from Expense tab; retained "Import Statement"</li>
 </ul>`,
   },
+  {
+    id: 105, cat: 'Changelog', priority: 'info', date: '2026-03-25',
+    title: 'v: Events calendar with weekend highlighting + regional public holidays',
+    tags: ['changelog', 'events', 'calendar', 'holidays', 'timezone'],
+    body: `<ul>
+  <li>Added weekend visualization in Events calendar (Saturday/Sunday emphasized in header and day cells)</li>
+  <li>Integrated public-holiday lookup by region using the Nager.Date API and per-year cache</li>
+  <li>Added calendar controls for Holiday Region and Timezone, including manual refresh</li>
+  <li>Holiday labels now render directly on date cells for quick planning visibility</li>
+</ul>`,
+  },
+  {
+    id: 106, cat: 'Changelog', priority: 'info', date: '2026-03-25',
+    title: 'v: Auto-detect locale for event region and timezone',
+    tags: ['changelog', 'events', 'locale', 'timezone', 'dst'],
+    body: `<ul>
+  <li>Added "Auto-detect" action in Events calendar settings</li>
+  <li>Detects timezone via browser Intl API and infers region from locale/timezone mapping</li>
+  <li>Stores detected preferences in localStorage and refreshes holidays automatically</li>
+  <li>DST handling is delegated to browser timezone rules via Intl.DateTimeFormat</li>
+</ul>`,
+  },
+  {
+    id: 107, cat: 'Changelog', priority: 'info', date: '2026-03-25',
+    title: 'v: Events access, interaction, and reminder workflow hardening',
+    tags: ['changelog', 'events', 'permissions', 'ux'],
+    body: `<ul>
+  <li>Fixed role permission merge logic to preserve default tab/page access (including Events)</li>
+  <li>Expanded superadmin capability maps to include events tab/page/field access paths</li>
+  <li>Updated dashboard "Upcoming Events" card action to open Events and pre-open Add Event modal for current date</li>
+  <li>Improved reminder/upcoming calculations to use selected calendar timezone context</li>
+</ul>`,
+  },
+  {
+    id: 108, cat: 'Changelog', priority: 'info', date: '2026-03-25',
+    title: 'v: Dashboard drag-and-drop customization stabilization',
+    tags: ['changelog', 'dashboard', 'drag-drop', 'ui-fixes'],
+    body: `<ul>
+  <li>Enabled drag-and-drop reordering for dashboard tiles, quick tabs, and tab menu items with local persistence</li>
+  <li>Fixed menu dropdown always-expanded regression by removing unintended display override</li>
+  <li>Fixed tile-size regression by restoring original grid sizing rules</li>
+  <li>Simplified drop insertion logic to prevent dragged cards snapping back to original positions</li>
+</ul>`,
+  },
+  {
+    id: 109, cat: 'Changelog', priority: 'info', date: '2026-03-25',
+    title: 'v: Admin external connectivity registry for monitoring and SNMP targets',
+    tags: ['changelog', 'network', 'monitoring', 'splunk', 'grafana', 'snmp'],
+    body: `<ul>
+  <li>Extended the Admin Network Firewall panel with editable external service profiles for Grafana, event-management endpoints, Splunk, SNMP devices, and newly added custom services</li>
+  <li>Added backend-managed persistence so profile changes survive refreshes and restarts</li>
+  <li>Added service-level test actions for HTTP/HTTPS, TCP reachability, and SNMP response validation</li>
+  <li>Added profile creation/deletion plus an aggregate health summary strip showing enabled, healthy, failing, and untested services</li>
+  <li>Added name, category, and health-state filters so larger service registries remain manageable for admins</li>
+  <li>Enabled scheduled backend retesting for enabled services, with the admin panel auto-refreshing to surface updated health status while the tab stays open</li>
+  <li>Stores the latest test result per service so admins can review operational health without leaving the settings area</li>
+</ul>`,
+  },
+  {
+    id: 110, cat: 'Changelog', priority: 'info', date: '2026-03-26',
+    title: 'v: Admin SMTP configuration for report email delivery',
+    tags: ['changelog', 'smtp', 'email', 'admin', 'network-settings'],
+    body: `<p><strong>Change Summary</strong></p>
+<ul>
+  <li><strong>What changed:</strong> Added SMTP settings to Admin Network Firewall configuration with fields for enable flag, STARTTLS toggle, host, port, username, password, and from-email.</li>
+  <li><strong>Why it changed:</strong> Enable admin-only email delivery setup without requiring container environment variable edits for each SMTP change.</li>
+  <li><strong>Impact:</strong> Expense report email sending now reads admin-configured SMTP first, with existing environment-variable fallback for compatibility.</li>
+  <li><strong>API/Data model:</strong> <code>/api/admin/network/settings</code> request/response now include <code>smtp</code> settings payload in network admin configuration.</li>
+</ul>`,
+  },
+  {
+    id: 111, cat: 'Changelog', priority: 'info', date: '2026-03-26',
+    title: 'v: Frontend idempotency key auto-header for write requests',
+    tags: ['changelog', 'api', 'idempotency', 'transactions'],
+    body: `<p><strong>Change Summary</strong></p>
+<ul>
+  <li><strong>What changed:</strong> Frontend API clients now auto-attach <code>X-Idempotency-Key</code> for <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, and <code>DELETE</code> when not explicitly provided.</li>
+  <li><strong>Why it changed:</strong> Prevent failed write operations on endpoints that enforce idempotency-key validation.</li>
+  <li><strong>Impact:</strong> Transaction create/update/delete and other mutating flows are resilient to duplicate submissions and no longer fail due to missing idempotency headers.</li>
+</ul>`,
+  },
+  {
+    id: 112, cat: 'Changelog', priority: 'info', date: '2026-03-26',
+    title: 'v: MFA challenge flow for login and profile security controls',
+    tags: ['changelog', 'auth', 'mfa', 'security'],
+    body: `<p><strong>Change Summary</strong></p>
+<ul>
+  <li><strong>What changed:</strong> Added multi-factor authentication challenge support in login UX and profile settings, including setup, enable, status, and disable workflows.</li>
+  <li><strong>Why it changed:</strong> Improve account protection and align privileged access behavior with stronger authentication controls.</li>
+  <li><strong>Impact:</strong> Users with MFA enabled can complete a second-step authenticator verification during sign-in; profile security now supports self-service MFA lifecycle actions.</li>
+  <li><strong>API:</strong> Client flows include <code>/auth/mfa</code>, <code>/auth/mfa/setup</code>, <code>/auth/mfa/enable</code>, and <code>/auth/mfa/disable</code> endpoints.</li>
+</ul>`,
+  },
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1002,7 +1121,7 @@ function renderStats() {
     { label: 'Total Entries', value: KB_DATA.length },
     { label: 'Critical / High', value: KB_DATA.filter(d => d.priority === 'critical' || d.priority === 'high').length },
     { label: 'Categories', value: [...new Set(KB_DATA.map(d => d.cat))].length },
-    { label: 'Last Updated', value: '23 Mar 2026' },
+    { label: 'Last Updated', value: '26 Mar 2026' },
   ];
   document.getElementById('kbStats').innerHTML = stats.map(s =>
     `<div class="kb-stat"><div class="kb-stat-label">${s.label}</div><div class="kb-stat-value">${s.value}</div></div>`

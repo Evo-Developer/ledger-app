@@ -1,7 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator, field_serializer, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from enum import Enum
+from decimal import Decimal, ROUND_HALF_UP
 
 
 class TransactionType(str, Enum):
@@ -54,23 +55,37 @@ class User(UserBase):
     permissions: UserPermissions = Field(default_factory=UserPermissions)
     identity_provider: Optional[str] = None
     external_subject: Optional[str] = None
+    mfa_enabled: bool = False
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Transaction Schemas
 class TransactionBase(BaseModel):
     type: TransactionType
     description: str
-    amount: float
+    amount: Decimal
     category: str
     date: datetime
     recurring: Optional[bool] = False
     spread_over_year: Optional[bool] = False
     notes: Optional[str] = None
+
+    @field_validator("amount")
+    @classmethod
+    def _normalize_amount(cls, value: Decimal) -> Decimal:
+        if value is None:
+            return value
+        normalized = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if normalized <= 0:
+            raise ValueError("amount must be greater than 0")
+        return normalized
+
+    @field_serializer("amount")
+    def _serialize_amount(self, value: Decimal) -> float:
+        return float(value)
 
 
 class TransactionCreate(TransactionBase):
@@ -80,12 +95,26 @@ class TransactionCreate(TransactionBase):
 class TransactionUpdate(BaseModel):
     type: Optional[TransactionType] = None
     description: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[Decimal] = None
     category: Optional[str] = None
     date: Optional[datetime] = None
     recurring: Optional[bool] = None
     spread_over_year: Optional[bool] = None
     notes: Optional[str] = None
+
+    @field_validator("amount")
+    @classmethod
+    def _normalize_amount(cls, value: Optional[Decimal]) -> Optional[Decimal]:
+        if value is None:
+            return value
+        normalized = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if normalized <= 0:
+            raise ValueError("amount must be greater than 0")
+        return normalized
+
+
+class TransactionReversalRequest(BaseModel):
+    reason: Optional[str] = None
 
 
 class Transaction(TransactionBase):
@@ -98,8 +127,7 @@ class Transaction(TransactionBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Asset Schemas
@@ -135,8 +163,7 @@ class Asset(AssetBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Document Schemas
@@ -168,8 +195,7 @@ class Document(DocumentBase):
     uploaded_at: datetime
     url: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Budget Schemas
@@ -199,8 +225,7 @@ class Budget(BudgetBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Budget with Spending Schema (for monthly tracking)
@@ -214,8 +239,7 @@ class BudgetWithSpending(BudgetBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Goal Schemas
@@ -243,8 +267,64 @@ class Goal(GoalBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EventBase(BaseModel):
+    title: str
+    details: Optional[str] = None
+    event_type: Optional[str] = None
+    start_date: date
+    end_date: Optional[date] = None
+    reminder_enabled: bool = False
+    reminder_days_before: int = 1
+
+    @field_validator("reminder_days_before")
+    @classmethod
+    def _validate_reminder_days(cls, value: int) -> int:
+        if value < 0 or value > 365:
+            raise ValueError("reminder_days_before must be between 0 and 365")
+        return value
+
+    @field_validator("end_date")
+    @classmethod
+    def _validate_end_date(cls, value: Optional[date], info):
+        start_date = info.data.get("start_date") if info and info.data else None
+        if value is not None and start_date is not None and value < start_date:
+            raise ValueError("end_date cannot be before start_date")
+        return value
+
+
+class EventCreate(EventBase):
+    pass
+
+
+class EventUpdate(BaseModel):
+    title: Optional[str] = None
+    details: Optional[str] = None
+    event_type: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    reminder_enabled: Optional[bool] = None
+    reminder_days_before: Optional[int] = None
+
+    @field_validator("reminder_days_before")
+    @classmethod
+    def _validate_update_reminder_days(cls, value: Optional[int]) -> Optional[int]:
+        if value is None:
+            return value
+        if value < 0 or value > 365:
+            raise ValueError("reminder_days_before must be between 0 and 365")
+        return value
+
+
+class Event(EventBase):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Investment Schemas
@@ -282,8 +362,7 @@ class Investment(InvestmentBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Liability Schemas
@@ -333,8 +412,7 @@ class Liability(LiabilityBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Integration Schemas
@@ -362,8 +440,7 @@ class Integration(IntegrationBase):
     last_sync: Optional[datetime] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Audit Log Schemas
@@ -385,14 +462,31 @@ class AuditLog(AuditLogBase):
     user_agent: Optional[str] = None
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LedgerEntry(BaseModel):
+    id: int
+    transaction_id: int
+    user_id: int
+    entry_type: str
+    account_code: str
+    amount: Decimal
+    created_at: datetime
+
+    @field_serializer("amount")
+    def _serialize_amount(self, value: Decimal) -> float:
+        return float(value)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Authentication Schemas
 class Token(BaseModel):
-    access_token: str
-    token_type: str
+    access_token: Optional[str] = None
+    token_type: Optional[str] = None
+    mfa_required: bool = False
+    mfa_message: Optional[str] = None
 
 
 class TokenData(BaseModel):
@@ -402,6 +496,23 @@ class TokenData(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+    mfa_code: Optional[str] = None
+
+
+class MfaSetupResponse(BaseModel):
+    enabled: bool
+    pending_setup: bool = False
+    manual_entry_key: Optional[str] = None
+    otpauth_uri: Optional[str] = None
+
+
+class MfaVerifyRequest(BaseModel):
+    code: str
+
+
+class MfaDisableRequest(BaseModel):
+    current_password: str
+    code: str
 
 
 class UserProfileUpdate(BaseModel):
@@ -411,6 +522,15 @@ class UserProfileUpdate(BaseModel):
 
 class UserPasswordChange(BaseModel):
     current_password: str
+    new_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
     new_password: str
 
 
@@ -466,6 +586,132 @@ class AdminResetResponse(BaseModel):
     documents_deleted: int = 0
     integrations_deleted: int = 0
     files_deleted: int = 0
+
+
+class FirewallStatusUpdateRequest(BaseModel):
+    internet_enabled: bool
+
+
+class FirewallStatusResponse(BaseModel):
+    internet_enabled: bool
+    inbound_blocked: bool
+    outbound_blocked: bool
+    updated_at: Optional[datetime] = None
+    updated_by: Optional[str] = None
+
+
+class FirewallConnectivityTestRequest(BaseModel):
+    url: str
+
+
+class FirewallConnectivityTestResponse(BaseModel):
+    url: str
+    internet_enabled: bool
+    success: bool
+    message: str
+    status_code: Optional[int] = None
+    latency_ms: Optional[float] = None
+
+
+class ProxySettings(BaseModel):
+    enabled: bool = False
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    bypass: Optional[str] = None
+
+
+class ActiveDirectorySettings(BaseModel):
+    enabled: bool = False
+    server: Optional[str] = None
+    domain: Optional[str] = None
+    base_dn: Optional[str] = None
+    group_dn: Optional[str] = None
+    bind_user: Optional[str] = None
+    use_ssl: bool = True
+
+
+class SmtpSettings(BaseModel):
+    enabled: bool = False
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    from_email: Optional[str] = None
+    use_tls: bool = True
+
+
+class NetworkAdminSettingsUpdateRequest(BaseModel):
+    ntp_servers: List[str] = Field(default_factory=list)
+    dns_servers: List[str] = Field(default_factory=list)
+    proxy: ProxySettings = Field(default_factory=ProxySettings)
+    active_directory: ActiveDirectorySettings = Field(default_factory=ActiveDirectorySettings)
+    smtp: SmtpSettings = Field(default_factory=SmtpSettings)
+
+
+class NetworkAdminSettingsResponse(NetworkAdminSettingsUpdateRequest):
+    updated_at: Optional[datetime] = None
+    updated_by: Optional[str] = None
+
+
+class ExternalConnectivityService(BaseModel):
+    id: str
+    name: str
+    category: str
+    protocol: str
+    enabled: bool = True
+    url: Optional[str] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    timeout_sec: float = 5.0
+    method: Optional[str] = "GET"
+    community: Optional[str] = "public"
+    oid: Optional[str] = "1.3.6.1.2.1.1.1.0"
+    notes: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    updated_by: Optional[str] = None
+    last_test: Optional[Dict[str, Any]] = None
+
+
+class ExternalConnectivityServiceUpdate(BaseModel):
+    name: str
+    category: str
+    protocol: str
+    enabled: bool = True
+    url: Optional[str] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    timeout_sec: float = 5.0
+    method: Optional[str] = "GET"
+    community: Optional[str] = "public"
+    oid: Optional[str] = "1.3.6.1.2.1.1.1.0"
+    notes: Optional[str] = None
+
+
+class ExternalConnectivityServiceCreate(ExternalConnectivityServiceUpdate):
+    pass
+
+
+class ExternalConnectivityTestRequest(BaseModel):
+    protocol: str
+    url: Optional[str] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    timeout_sec: float = 5.0
+    method: Optional[str] = "GET"
+    community: Optional[str] = "public"
+    oid: Optional[str] = "1.3.6.1.2.1.1.1.0"
+
+
+class ExternalConnectivityTestResponse(BaseModel):
+    service_id: Optional[str] = None
+    protocol: str
+    success: bool
+    message: str
+    status_code: Optional[int] = None
+    latency_ms: Optional[float] = None
+    response_preview: Optional[str] = None
 
 
 class ExpenseReportEmailRequest(BaseModel):
@@ -539,6 +785,8 @@ class DashboardStats(BaseModel):
     total_budget_spent: float = 0.0
     budget_remaining: float = 0.0
     budgets_over_limit: int = 0
+    upcoming_event_count: int = 0
+    next_upcoming_event: Optional[str] = None
 
 
 # Filter Schemas

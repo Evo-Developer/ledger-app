@@ -226,8 +226,8 @@ Interactive API documentation:
 - **80**: Frontend (Nginx)
 - **8000**: Backend (FastAPI)
 - **3306**: Database (MySQL)
-
-If ports conflict, edit `docker-compose.yml`:
+- **3000**: Grafana
+- **9090**: Prometheus
 ```yaml
 ports:
   - "8080:80"   # Use 8080 instead of 80

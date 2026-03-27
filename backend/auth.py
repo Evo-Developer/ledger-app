@@ -11,17 +11,92 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import json
 import os
+import re
+import time
+import threading
+import logging
 
 from database import get_db
 from models import User, UserRole
 from schemas import TokenData
+
+logger = logging.getLogger(__name__)
 
 # Configuration
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production-please-use-openssl-rand-hex-32-to-generate")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 SUPERADMIN_USERNAME = os.getenv("SUPERADMIN_USERNAME", "admin")
-SUPERADMIN_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "admin123")
+SUPERADMIN_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "change-me-superadmin-password")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+
+
+def _is_insecure_secret(secret: str) -> bool:
+    if not secret:
+        return True
+    insecure_markers = [
+        "change-this",
+        "please-use-openssl",
+        "secret",
+    ]
+    lowered = secret.lower()
+    return any(marker in lowered for marker in insecure_markers) or len(secret) < 32
+
+
+def _is_insecure_superadmin_password(password: str) -> bool:
+    if not password:
+        return True
+    lowered = password.lower()
+    weak_values = {
+        "admin",
+        "admin123",
+        "password",
+        "password123",
+        "change-me-superadmin-password",
+    }
+    return lowered in weak_values or len(password) < 12
+
+
+if ENVIRONMENT == "production":
+    if _is_insecure_secret(SECRET_KEY):
+        raise RuntimeError("Insecure SECRET_KEY for production. Set a strong random value.")
+    if _is_insecure_superadmin_password(SUPERADMIN_PASSWORD):
+        raise RuntimeError("Insecure SUPERADMIN_PASSWORD for production. Set a strong random value.")
+else:
+    if _is_insecure_secret(SECRET_KEY):
+        logger.warning("Using insecure SECRET_KEY in non-production environment.")
+    if _is_insecure_superadmin_password(SUPERADMIN_PASSWORD):
+        logger.warning("Using weak SUPERADMIN_PASSWORD in non-production environment.")
+
+
+def validate_password_policy(password: str) -> Optional[str]:
+    """Validate password against configurable policy; returns error message or None."""
+    min_len = int(os.getenv("MIN_PASSWORD_LENGTH", "8"))
+    max_len = int(os.getenv("MAX_PASSWORD_LENGTH", "128"))
+    require_complexity = os.getenv("REQUIRE_PASSWORD_COMPLEXITY", "true").lower() in {"1", "true", "yes", "on"}
+
+    if password is None:
+        return "Password is required"
+    if len(password) < min_len:
+        return f"Password must be at least {min_len} characters"
+    if len(password) > max_len:
+        return f"Password must be at most {max_len} characters"
+
+    if require_complexity:
+        if not re.search(r"[A-Z]", password):
+            return "Password must include at least one uppercase letter"
+        if not re.search(r"[a-z]", password):
+            return "Password must include at least one lowercase letter"
+        if not re.search(r"[0-9]", password):
+            return "Password must include at least one number"
+        if not re.search(r"[^A-Za-z0-9]", password):
+            return "Password must include at least one special character"
+
+    return None
+
+
+_registration_attempts = {}
+_registration_attempts_lock = threading.RLock()
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -253,11 +328,24 @@ async def require_write_access(current_user: User = Depends(get_current_active_u
 
 
 def check_registration_rate_limit(ip_address: str) -> bool:
-    """
-    Simple rate limit check
-    (Simplified version - always allow)
-    """
-    return True
+    """In-memory registration rate limit: max registrations per hour per source IP."""
+    if not ip_address:
+        return True
+
+    max_registrations_per_hour = int(os.getenv("MAX_REGISTRATIONS_PER_HOUR", "3"))
+    now = time.time()
+    one_hour_ago = now - 3600
+
+    with _registration_attempts_lock:
+        attempts = _registration_attempts.get(ip_address, [])
+        attempts = [ts for ts in attempts if ts >= one_hour_ago]
+
+        if len(attempts) >= max_registrations_per_hour:
+            return False
+
+        attempts.append(now)
+        _registration_attempts[ip_address] = attempts
+        return True
 
 
 # Export functions
@@ -276,6 +364,7 @@ __all__ = [
     'ACCESS_TOKEN_EXPIRE_MINUTES',
     'SUPERADMIN_USERNAME',
     'SUPERADMIN_PASSWORD',
+    'validate_password_policy',
     'get_default_permissions',
     'normalize_permissions',
     'user_has_permission'

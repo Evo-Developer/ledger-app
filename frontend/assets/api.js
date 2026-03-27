@@ -38,6 +38,10 @@ class API {
         localStorage.removeItem('token');
     }
 
+    createIdempotencyKey() {
+        return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+
     getHeaders() {
         const headers = {
             'Content-Type': 'application/json',
@@ -142,6 +146,11 @@ class API {
             ...(options.headers || {}),
         };
 
+        const method = String(options.method || 'GET').toUpperCase();
+        if ((method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') && !headers['X-Idempotency-Key']) {
+            headers['X-Idempotency-Key'] = this.createIdempotencyKey();
+        }
+
         const config = {
             ...options,
             headers,
@@ -176,11 +185,14 @@ class API {
         });
     }
 
-    async login(username, password) {
+    async login(username, password, mfaCode = '') {
         const formData = new URLSearchParams();
         formData.append('grant_type', 'password');
         formData.append('username', username);
         formData.append('password', password);
+        if (mfaCode) {
+            formData.append('mfa_code', mfaCode);
+        }
 
         const { data } = await this.fetchJson('/auth/login', {
             method: 'POST',
@@ -189,7 +201,9 @@ class API {
             },
             body: formData,
         });
-        this.setToken(data.access_token);
+        if (data && data.access_token) {
+            this.setToken(data.access_token);
+        }
         return data;
     }
 
@@ -211,6 +225,28 @@ class API {
                 current_password: currentPassword,
                 new_password: newPassword,
             }),
+        });
+    }
+
+    async getMfaStatus() {
+        return this.request('/auth/mfa');
+    }
+
+    async beginMfaSetup() {
+        return this.request('/auth/mfa/setup', { method: 'POST' });
+    }
+
+    async enableMfa(code) {
+        return this.request('/auth/mfa/enable', {
+            method: 'POST',
+            body: JSON.stringify({ code }),
+        });
+    }
+
+    async disableMfa(currentPassword, code) {
+        return this.request('/auth/mfa/disable', {
+            method: 'POST',
+            body: JSON.stringify({ current_password: currentPassword, code }),
         });
     }
 
@@ -335,6 +371,35 @@ class API {
 
     async deleteGoal(id) {
         return this.request(`/goals/${id}`, {
+            method: 'DELETE',
+        });
+    }
+
+    // Events
+    async getEvents(fromDate = null, toDate = null) {
+        const params = new URLSearchParams();
+        if (fromDate) params.append('from_date', fromDate);
+        if (toDate) params.append('to_date', toDate);
+        const query = params.toString();
+        return this.request(`/events${query ? `?${query}` : ''}`);
+    }
+
+    async createEvent(event) {
+        return this.request('/events', {
+            method: 'POST',
+            body: JSON.stringify(event),
+        });
+    }
+
+    async updateEvent(id, event) {
+        return this.request(`/events/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(event),
+        });
+    }
+
+    async deleteEvent(id) {
+        return this.request(`/events/${id}`, {
             method: 'DELETE',
         });
     }
@@ -526,6 +591,36 @@ class API {
             method: 'POST',
             body: JSON.stringify({ password }),
         });
+    }
+
+    async getFirewallStatus() {
+        return this.request('/admin/firewall/status');
+    }
+
+    async updateFirewallStatus(internetEnabled) {
+        return this.request('/admin/firewall/status', {
+            method: 'PUT',
+            body: JSON.stringify({ internet_enabled: !!internetEnabled }),
+        });
+    }
+
+    async testFirewallConnectivity(url) {
+        return this.request('/admin/firewall/test', {
+            method: 'POST',
+            body: JSON.stringify({ url }),
+        });
+    }
+
+    async getInboundTrafficLog(limit = 200) {
+        return this.request(`/admin/network/inbound?limit=${limit}`);
+    }
+
+    async getOutboundTrafficLog(limit = 200) {
+        return this.request(`/admin/network/outbound?limit=${limit}`);
+    }
+
+    async clearNetworkLogs() {
+        return this.request('/admin/network/logs', { method: 'DELETE' });
     }
 
     // Dashboard

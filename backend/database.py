@@ -1,11 +1,21 @@
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import OperationalError
 import os
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+# Import enterprise connection pool configuration
+try:
+    from concurrency import connection_pool as enterprise_pool
+    ENTERPRISE_MODE = True
+except ImportError:
+    ENTERPRISE_MODE = False
+    logger.warning("Enterprise mode disabled - concurrency module not available")
 
 # Default to MySQL, but allow overriding via env and fall back to SQLite if unavailable.
 DATABASE_URL = os.getenv(
@@ -14,18 +24,28 @@ DATABASE_URL = os.getenv(
 )
 
 def _create_engine(url: str):
-    """Create a SQLAlchemy engine and validate the connection."""
-    engine = create_engine(
-        url,
-        pool_pre_ping=True,
-        pool_recycle=3600,
-        echo=True  # Set to False in production
-    )
+    """Create a SQLAlchemy engine with enterprise-grade configuration."""
+    
+    # Get connection pool config from enterprise module if available
+    if ENTERPRISE_MODE:
+        pool_config = enterprise_pool.get_connection_config()
+        logger.info(f"Using enterprise connection pool: {pool_config}")
+    else:
+        pool_config = {
+            'pool_size': 20,
+            'max_overflow': 10,
+            'pool_pre_ping': True,
+            'pool_recycle': 3600,
+            'echo': False,
+        }
+    
+    engine = create_engine(url, **pool_config)
 
     # Validate connectivity early
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
+            logger.info("Database connection validated successfully")
     except Exception as e:
         raise OperationalError(f"Unable to connect to database: {e}", None, None)
 
@@ -35,13 +55,13 @@ try:
     engine = _create_engine(DATABASE_URL)
 except OperationalError as e:
     # Fallback to local SQLite for development/demo purposes
-    print(f"[database] Warning: {e}")
-    print("[database] Falling back to local SQLite database at ./ledger.db")
+    logger.warning(f"[database] {e}")
+    logger.info("[database] Falling back to local SQLite database at ./ledger.db")
     SQLITE_URL = "sqlite:///./ledger.db"
     engine = create_engine(
         SQLITE_URL,
         connect_args={"check_same_thread": False},
-        echo=True
+        echo=False
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -50,12 +70,17 @@ Base = declarative_base()
 
 
 def get_db():
-    """Dependency to get database session"""
+    """Dependency to get database session with proper resource cleanup."""
     db = SessionLocal()
     try:
         yield db
+    except Exception as e:
+        logger.error(f"Database session error: {str(e)[:100]}")
+        db.rollback()
+        raise
     finally:
         db.close()
+
 
 
 def ensure_transaction_recurring_column():
@@ -100,6 +125,47 @@ def ensure_transaction_spread_over_year_column():
                     conn.execute(text('ALTER TABLE transactions ADD COLUMN spread_over_year BOOLEAN DEFAULT FALSE'))
         except Exception as e:
             print(f"[database] Warning: could not ensure spread_over_year column in transactions: {e}")
+
+
+def ensure_transaction_idempotency_key_column():
+    """Ensure idempotency_key column exists on transactions table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(transactions)')).fetchall()]
+                if 'idempotency_key' not in columns:
+                    conn.execute(text('ALTER TABLE transactions ADD COLUMN idempotency_key VARCHAR(128)'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                exists = conn.execute(text("SHOW COLUMNS FROM transactions LIKE 'idempotency_key' ")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE transactions ADD COLUMN idempotency_key VARCHAR(128) NULL'))
+            elif engine.dialect.name == 'postgresql':
+                exists = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='transactions' AND column_name='idempotency_key' ")).fetchone()
+                if not exists:
+                    conn.execute(text('ALTER TABLE transactions ADD COLUMN idempotency_key VARCHAR(128)'))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure idempotency_key column in transactions: {e}")
+
+
+def ensure_transaction_amount_decimal_column():
+    """Ensure transactions.amount uses a fixed-point decimal type."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                # SQLite uses dynamic typing and does not support ALTER COLUMN TYPE.
+                return
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                conn.execute(text('ALTER TABLE transactions MODIFY COLUMN amount DECIMAL(18,2) NOT NULL'))
+            elif engine.dialect.name == 'postgresql':
+                conn.execute(text('ALTER TABLE transactions ALTER COLUMN amount TYPE NUMERIC(18,2) USING amount::NUMERIC(18,2)'))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure decimal amount column in transactions: {e}")
 
 
 def ensure_document_folder_columns():
@@ -245,6 +311,39 @@ def ensure_user_federation_columns():
             conn.commit()
         except Exception as e:
             print(f"[database] Warning: could not ensure federation columns in users: {e}")
+
+
+def ensure_user_mfa_columns():
+    """Ensure MFA columns exist on users table."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == 'sqlite':
+                columns = [row[1] for row in conn.execute(text('PRAGMA table_info(users)')).fetchall()]
+                if 'mfa_enabled' not in columns:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT 0'))
+                if 'mfa_secret' not in columns:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_secret VARCHAR(64)'))
+                if 'mfa_temp_secret' not in columns:
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_temp_secret VARCHAR(64)'))
+            elif engine.dialect.name in ('mysql', 'mariadb'):
+                if not conn.execute(text("SHOW COLUMNS FROM users LIKE 'mfa_enabled' ")).fetchone():
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE'))
+                if not conn.execute(text("SHOW COLUMNS FROM users LIKE 'mfa_secret' ")).fetchone():
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_secret VARCHAR(64) NULL'))
+                if not conn.execute(text("SHOW COLUMNS FROM users LIKE 'mfa_temp_secret' ")).fetchone():
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_temp_secret VARCHAR(64) NULL'))
+            elif engine.dialect.name == 'postgresql':
+                if not conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='mfa_enabled' ")).fetchone():
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE'))
+                if not conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='mfa_secret' ")).fetchone():
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_secret VARCHAR(64)'))
+                if not conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='mfa_temp_secret' ")).fetchone():
+                    conn.execute(text('ALTER TABLE users ADD COLUMN mfa_temp_secret VARCHAR(64)'))
+            conn.commit()
+        except Exception as e:
+            print(f"[database] Warning: could not ensure MFA columns in users: {e}")
 
 
 def ensure_bootstrap_admin():
@@ -658,10 +757,18 @@ def ensure_budget_start_month_column():
 def init_db():
     """Initialize database tables"""
     from models import Base
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except OperationalError as exc:
+        # Multi-worker startup can race during first table creation; ignore benign
+        # "already exists" errors and continue with column ensures.
+        err_text = str(exc).lower()
+        if "already exists" not in err_text and "1050" not in err_text:
+            raise
     ensure_user_role_column()
     ensure_user_permissions_column()
     ensure_user_federation_columns()
+    ensure_user_mfa_columns()
     ensure_bootstrap_admin()
     ensure_asset_balance_column()
     ensure_asset_income_column()
@@ -675,6 +782,8 @@ def init_db():
     ensure_investment_start_date_column()
     ensure_investment_goal_id_column()
     ensure_transaction_recurring_column()
+    ensure_transaction_idempotency_key_column()
+    ensure_transaction_amount_decimal_column()
     ensure_budget_period_column()
     ensure_budget_recurring_column()
     ensure_budget_start_month_column()

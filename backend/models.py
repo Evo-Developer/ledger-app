@@ -1,6 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Enum, Date
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Enum, Date, Numeric
+from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, date
 import enum
 
@@ -26,6 +25,9 @@ class User(Base):
     permissions_json = Column(Text, nullable=True)
     identity_provider = Column(String(64), nullable=True)
     external_subject = Column(String(255), nullable=True, index=True)
+    mfa_enabled = Column(Boolean, default=False, nullable=False)
+    mfa_secret = Column(String(64), nullable=True)
+    mfa_temp_secret = Column(String(64), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -40,6 +42,19 @@ class User(Base):
     assets = relationship("Asset", back_populates="user", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    ledger_entries = relationship("LedgerEntry", back_populates="user", cascade="all, delete-orphan")
+    events = relationship("Event", back_populates="user", cascade="all, delete-orphan")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(128), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class TransactionType(str, enum.Enum):
@@ -54,10 +69,11 @@ class Transaction(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     type = Column(Enum(TransactionType), nullable=False)
     description = Column(String(500), nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(18, 2), nullable=False)
     category = Column(String(100), nullable=False)
     date = Column(DateTime, nullable=False)
     notes = Column(Text)
+    idempotency_key = Column(String(128), nullable=True, index=True)
     recurring = Column(Boolean, default=False)
     spread_over_year = Column(Boolean, default=False)
     synced = Column(Boolean, default=False)
@@ -67,6 +83,27 @@ class Transaction(Base):
 
     # Relationships
     user = relationship("User", back_populates="transactions")
+    ledger_entries = relationship("LedgerEntry", back_populates="transaction", cascade="all, delete-orphan")
+
+
+class LedgerEntryType(str, enum.Enum):
+    DEBIT = "debit"
+    CREDIT = "credit"
+
+
+class LedgerEntry(Base):
+    __tablename__ = "ledger_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    entry_type = Column(Enum(LedgerEntryType), nullable=False)
+    account_code = Column(String(100), nullable=False)
+    amount = Column(Numeric(18, 2), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    transaction = relationship("Transaction", back_populates="ledger_entries")
+    user = relationship("User", back_populates="ledger_entries")
 
 
 class Asset(Base):
@@ -138,6 +175,25 @@ class Goal(Base):
 
     # Relationships
     user = relationship("User", back_populates="goals")
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    details = Column(Text, nullable=True)
+    event_type = Column(String(100), nullable=True)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
+    reminder_enabled = Column(Boolean, nullable=False, default=False)
+    reminder_days_before = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="events")
 
 
 class Investment(Base):
