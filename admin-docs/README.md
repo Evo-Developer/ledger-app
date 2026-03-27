@@ -323,11 +323,11 @@ For questions or issues:
 
 ## 📝 Change Summary (March 2026)
 
-- Feature/Module: Frontend navigation consistency for dashboard tiles, quick tabs, and Navigate dropdown
+- Feature/Module: Frontend navigation consistency for dashboard tiles and left quick access
 - Change Type: Fix
-- Description: Added missing dashboard tile actions to the Navigate dropdown and quick-tabs, then aligned dropdown ordering to match quick-tab ordering for shared items.
-- Reason: Users reported that some dashboard tile items were not visible in navigation, creating discoverability gaps.
-- Impact: Improved UX consistency and discoverability; users can now access tile-driven actions from both quick-tabs and dropdown navigation.
+- Description: Replaced the top quick-tab strip with a grouped left-side quick access panel, added a collapse toggle with persisted state, introduced an icon-only collapsed rail, moved editable section content into the adjacent right column so it no longer drops below the sidebar, and removed the redundant Navigate menu.
+- Reason: Users wanted persistent quick access on the left instead of a dense horizontal shortcut row.
+- Impact: Improved navigation discoverability and scanning; primary sections and dashboard shortcuts are now grouped in a dedicated left-side access panel that can collapse into an icon rail while the editing area stays adjacent on the right with no duplicate dropdown menu.
 - Dependencies: Frontend-only change in app.html using existing handlers (handleOverviewTileClick and showForecastSummaryPopup).
 
 ---

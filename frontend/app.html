@@ -1599,44 +1599,162 @@
         }
 
         .tabs-shell {
-            display: flex;
-            align-items: center;
+            display: grid;
+            grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+            align-items: start;
             gap: 12px;
-            flex-wrap: wrap;
         }
 
-        .quick-tabs {
+        .quick-access-main {
+            min-width: 0;
+        }
+
+        .quick-access-panel {
+            position: sticky;
+            top: 84px;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, var(--bg) 6%) 0%, color-mix(in srgb, var(--surface-elevated) 92%, var(--surface) 8%) 100%);
+            box-shadow: var(--shadow);
+            padding: 18px;
+        }
+
+        .quick-access-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .quick-access-heading {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .quick-access-title {
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+
+        .quick-access-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .quick-access-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 560px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .quick-access-group-label {
+            margin: 10px 0 2px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .quick-access-group-label:first-child {
+            margin-top: 0;
+        }
+
+        .quick-access-link {
             display: flex;
             align-items: center;
             gap: 10px;
-            flex-wrap: wrap;
-            flex: 1 1 520px;
-        }
-
-        .quick-tab {
             border: 1px solid var(--border);
-            border-radius: 999px;
+            border-radius: 14px;
             background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
             color: var(--text-secondary);
-            padding: 10px 14px;
+            padding: 12px 14px;
             font-size: 13px;
             font-weight: 700;
             letter-spacing: 0.01em;
             cursor: pointer;
             transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+            width: 100%;
+            text-align: left;
         }
 
-        .quick-tab:hover {
+        .quick-access-icon {
+            flex: 0 0 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .quick-access-label {
+            min-width: 0;
+        }
+
+        .quick-access-link:hover {
             border-color: var(--accent-light);
             color: var(--accent);
             transform: translateY(-1px);
         }
 
-        .quick-tab.active {
+        .quick-access-link.active {
             background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%);
             border-color: color-mix(in srgb, var(--accent) 45%, var(--border) 55%);
             color: var(--accent);
             box-shadow: var(--shadow);
+        }
+
+        .tabs-shell.quick-access-collapsed {
+            grid-template-columns: 68px minmax(0, 1fr);
+        }
+
+        .quick-access-panel.is-collapsed {
+            padding: 14px 10px;
+        }
+
+        .quick-access-panel.is-collapsed .quick-access-heading {
+            display: none;
+        }
+
+        .quick-access-panel.is-collapsed .quick-access-header {
+            margin-bottom: 10px;
+            justify-content: center;
+        }
+
+        .quick-access-panel.is-collapsed .quick-access-list {
+            max-height: none;
+            overflow: visible;
+            padding-right: 0;
+        }
+
+        .quick-access-panel.is-collapsed .quick-access-group-label,
+        .quick-access-panel.is-collapsed .quick-access-label {
+            display: none;
+        }
+
+        .quick-access-panel.is-collapsed .quick-access-link {
+            justify-content: center;
+            padding: 10px;
+            border-radius: 16px;
+            min-height: 44px;
+        }
+
+        .quick-access-panel.is-collapsed .quick-access-icon {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .quick-access-collapse-btn {
+            flex: 0 0 auto;
         }
 
         /* Quote of the Day */
@@ -1840,116 +1958,6 @@
             font-weight: 400;
             opacity: 0.75;
             max-width: 220px;
-        }
-
-        .tab-menu {
-            position: relative;
-            width: 100%;
-            max-width: 360px;
-        }
-
-        .tab-menu-button {
-            width: 100%;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 14px;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            background: var(--surface);
-            color: var(--text);
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            box-shadow: var(--shadow);
-            transition: box-shadow 0.2s ease, border-color 0.2s ease;
-        }
-
-        .tab-menu-button:hover {
-            border-color: var(--accent-light);
-            box-shadow: var(--shadow-md);
-        }
-
-        .tab-menu-caret {
-            color: var(--text-secondary);
-            font-size: 12px;
-            transition: transform 0.2s ease;
-        }
-
-        .tab-menu.open .tab-menu-caret {
-            transform: rotate(180deg);
-        }
-
-        .tab-menu-dropdown {
-            position: absolute;
-            top: calc(100% + 8px);
-            left: 0;
-            right: 0;
-            z-index: 20;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            box-shadow: var(--shadow-lg);
-            max-height: 320px;
-            overflow-y: auto;
-            display: none;
-            padding: 8px;
-        }
-
-        .tab-menu-search {
-            position: sticky;
-            top: 0;
-            z-index: 1;
-            background: var(--surface);
-            padding-bottom: 8px;
-            margin-bottom: 4px;
-        }
-
-        .tab-menu-search-input {
-            width: 100%;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 10px 12px;
-            font-size: 14px;
-            font-family: inherit;
-            background: color-mix(in srgb, var(--surface) 92%, var(--bg) 8%);
-            color: var(--text);
-        }
-
-        .tab-menu-search-input:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
-            background: var(--surface);
-        }
-
-        .tab-menu.open .tab-menu-dropdown {
-            display: block;
-        }
-
-        .tab-menu-item {
-            width: 100%;
-            text-align: left;
-            background: transparent;
-            border: none;
-            border-radius: 8px;
-            color: var(--text-secondary);
-            font-size: 14px;
-            font-weight: 600;
-            padding: 10px 12px;
-            cursor: pointer;
-            transition: background 0.2s ease, color 0.2s ease;
-        }
-
-        .tab-menu-item:hover {
-            background: color-mix(in srgb, var(--accent) 12%, transparent);
-            color: var(--accent);
-        }
-
-        .tab-menu-item.active {
-            background: color-mix(in srgb, var(--accent) 22%, transparent);
-            color: var(--accent);
         }
 
         .empty-state {
@@ -2655,21 +2663,57 @@
             }
 
             .tabs-shell {
+                grid-template-columns: 1fr;
                 align-items: stretch;
             }
 
-            .quick-tabs {
-                flex: 1 1 100%;
+            .quick-access-panel {
+                position: static;
+                padding: 16px;
             }
 
-            .quick-tab {
-                flex: 1 1 calc(50% - 10px);
-                justify-content: center;
-                text-align: center;
+            .tabs-shell.quick-access-collapsed {
+                grid-template-columns: 1fr;
             }
 
-            .tab-menu {
-                max-width: none;
+            .quick-access-panel.is-collapsed {
+                padding: 16px;
+            }
+
+            .quick-access-panel.is-collapsed .quick-access-heading,
+            .quick-access-panel.is-collapsed .quick-access-list {
+                display: block;
+            }
+
+            .quick-access-panel.is-collapsed .quick-access-list {
+                display: grid;
+            }
+
+            .quick-access-panel.is-collapsed .quick-access-group-label,
+            .quick-access-panel.is-collapsed .quick-access-label {
+                display: block;
+            }
+
+            .quick-access-panel.is-collapsed .quick-access-link {
+                justify-content: flex-start;
+                padding: 12px 14px;
+                min-height: 48px;
+            }
+
+            .quick-access-panel.is-collapsed .quick-access-header {
+                justify-content: space-between;
+            }
+
+            .quick-access-list {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                max-height: none;
+                overflow: visible;
+                padding-right: 0;
+            }
+
+            .quick-access-link {
+                min-height: 48px;
             }
 
             .header-meta,
@@ -3210,12 +3254,9 @@
             border-radius: 8px;
         }
 
-        .quick-tabs {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            overflow-x: auto;
-            padding: 4px 0;
+        .quick-access-list {
+            scrollbar-width: thin;
+            scrollbar-color: color-mix(in srgb, var(--accent) 35%, var(--border) 65%) transparent;
         }
     </style>
 </head>
@@ -3435,70 +3476,41 @@
         <!-- Tabs -->
         <div class="tabs">
             <div class="tabs-shell">
-                <div class="quick-tabs draggable-container" aria-label="Quick navigation">
-                    <button class="quick-tab active" type="button" data-tab="expenses" onclick="switchTab('expenses', this)">💸 Expenses</button>
-                    <button class="quick-tab" type="button" data-tab="income" onclick="switchTab('income', this)">💰 Income</button>
-                    <button class="quick-tab" type="button" data-tab="budgets" onclick="switchTab('budgets', this)">🧾 Budgets</button>
-                    <button class="quick-tab" type="button" data-tab="goals" onclick="switchTab('goals', this)">🎯 Goals</button>
-                    <button class="quick-tab" type="button" data-tab="savings" onclick="switchTab('savings', this)">💧 Savings</button>
-                    <button class="quick-tab" type="button" data-tab="events" onclick="switchTab('events', this)">📅 Events</button>
-                    <button class="quick-tab" type="button" data-tab="investments" onclick="switchTab('investments', this)">📈 Investments</button>
-                    <button class="quick-tab" type="button" data-tab="retirement" onclick="switchTab('retirement', this)">🧓 Retirement</button>
-                    <button class="quick-tab" type="button" data-tab="insurance" onclick="switchTab('insurance', this)">🛡️ Insurances</button>
-                    <button class="quick-tab" type="button" data-tab="assets" onclick="switchTab('assets', this)">🏠 Assets</button>
-                    <button class="quick-tab" type="button" data-tab="liabilities" onclick="switchTab('liabilities', this)">🏦 Liabilities</button>
-                    <button class="quick-tab" type="button" data-tab="insights" onclick="switchTab('insights', this)">🧠 Fin_Insights</button>
-                    <button class="quick-tab" type="button" data-action="health" onclick="executeMenuAction('health', 'Financial Health')">🧭 Health</button>
-                    <button class="quick-tab" type="button" data-action="balance" onclick="executeMenuAction('balance', 'Current Balance')">💳 Balance</button>
-                    <button class="quick-tab" type="button" data-action="networth" onclick="executeMenuAction('networth', 'Net Worth')">🐷 Net Worth</button>
-                    <button class="quick-tab" type="button" data-action="emergency" onclick="executeMenuAction('emergency', 'Emergency Fund')">🛟 Emergency</button>
-                    <button class="quick-tab" type="button" data-action="creditCards" onclick="executeMenuAction('creditCards', 'Credit Cards')">💳 Cards</button>
-                    <button class="quick-tab" type="button" data-action="tax" onclick="executeMenuAction('tax', 'Taxes')">🧾 Taxes</button>
-                    <button class="quick-tab" type="button" data-action="forecast" onclick="executeMenuAction('forecast', 'Forecast')">🔮 Forecast</button>
-                </div>
-                <div class="tab-menu" id="tabMenu">
-                    <button class="tab-menu-button" type="button" onclick="toggleTabMenu()" aria-expanded="false" aria-controls="tabMenuDropdown" id="tabMenuButton">
-                        <span>Navigate: <span id="activeTabLabel">Expenses</span></span>
-                        <span class="tab-menu-caret">▼</span>
-                    </button>
-                    <div class="tab-menu-dropdown draggable-container" id="tabMenuDropdown">
-                        <div class="tab-menu-search">
-                            <input
-                                type="text"
-                                id="tabMenuSearch"
-                                class="tab-menu-search-input"
-                                placeholder="Search sections..."
-                                oninput="applyTabMenuFilter()"
-                            />
+                <aside class="quick-access-panel">
+                    <div class="quick-access-header">
+                        <div class="quick-access-heading">
+                            <div class="quick-access-title">Quick Access</div>
+                            <div class="quick-access-subtitle">Keep the most-used sections and dashboard shortcuts pinned on the left.</div>
                         </div>
-                        <button class="tab-menu-item active" data-tab="expenses" onclick="selectTabFromMenu('expenses', this)">💸 Expenses</button>
-                        <button class="tab-menu-item" data-tab="income" onclick="selectTabFromMenu('income', this)">💰 Income</button>
-                        <button class="tab-menu-item" data-tab="budgets" onclick="selectTabFromMenu('budgets', this)">💰 Budgets</button>
-                        <button class="tab-menu-item" data-tab="goals" onclick="selectTabFromMenu('goals', this)">🎯 Goals</button>
-                        <button class="tab-menu-item" data-tab="savings" onclick="selectTabFromMenu('savings', this)">💧 Savings</button>
-                        <button class="tab-menu-item" data-tab="events" onclick="selectTabFromMenu('events', this)">📅 Events & Calendar</button>
-                        <button class="tab-menu-item" data-tab="investments" onclick="selectTabFromMenu('investments', this)">📈 Investments</button>
-                        <button class="tab-menu-item" data-tab="retirement" onclick="selectTabFromMenu('retirement', this)">🧓 Retirement Products</button>
-                        <button class="tab-menu-item" data-tab="insurance" onclick="selectTabFromMenu('insurance', this)">🛡️ Insurances</button>
-                        <button class="tab-menu-item" data-tab="assets" onclick="selectTabFromMenu('assets', this)">🏠 Assets</button>
-                        <button class="tab-menu-item" data-tab="liabilities" onclick="selectTabFromMenu('liabilities', this)">🏦 Liabilities</button>
-                        <button class="tab-menu-item" data-tab="insights" onclick="selectTabFromMenu('insights', this)">🧠 Fin_Insights</button>
-                        <button class="tab-menu-item" type="button" data-action="health" onclick="executeMenuAction('health', 'Financial Health')">🧭 Financial Health</button>
-                        <button class="tab-menu-item" type="button" data-action="balance" onclick="executeMenuAction('balance', 'Current Balance')">💳 Current Balance</button>
-                        <button class="tab-menu-item" type="button" data-action="networth" onclick="executeMenuAction('networth', 'Net Worth')">🐷 Net Worth</button>
-                        <button class="tab-menu-item" type="button" data-action="emergency" onclick="executeMenuAction('emergency', 'Emergency Fund')">🛟 Emergency Fund</button>
-                        <button class="tab-menu-item" type="button" data-action="creditCards" onclick="executeMenuAction('creditCards', 'Credit Cards')">💳 Credit Cards</button>
-                        <button class="tab-menu-item" type="button" data-action="tax" onclick="executeMenuAction('tax', 'Taxes')">🧾 Taxes</button>
-                        <button class="tab-menu-item" type="button" data-action="forecast" onclick="executeMenuAction('forecast', 'Forecast')">🔮 Forecast</button>
-                        <button class="tab-menu-item" data-tab="documents" onclick="selectTabFromMenu('documents', this)">📄 Documents</button>
-                        <button class="tab-menu-item" data-tab="integrations" onclick="selectTabFromMenu('integrations', this)">🔗 Integrations</button>
-                        <button class="tab-menu-item" data-tab="users" id="usersTabButton" onclick="selectTabFromMenu('users', this)" style="display: none;">👥 Users</button>
-                        <button class="tab-menu-item" data-tab="audit" onclick="selectTabFromMenu('audit', this)">🛡️ Audit Trail</button>
-                        <button class="tab-menu-item" data-tab="settings" id="settingsTabButton" onclick="selectTabFromMenu('settings', this)" style="display: none;">⚙️ Settings</button>
+                        <button class="icon-btn quick-access-collapse-btn" type="button" id="quickAccessToggleBtn" onclick="toggleQuickAccessPanel()" title="Collapse quick access" aria-expanded="true">◀</button>
                     </div>
-                </div>
-            </div>
-        </div>
+                    <div class="quick-access-list draggable-container" aria-label="Quick access navigation">
+                        <div class="quick-access-group-label">Core</div>
+                        <button class="quick-access-link active" type="button" data-tab="expenses" aria-label="Expenses" title="Expenses" onclick="switchTab('expenses', this)"><span class="quick-access-icon">💸</span><span class="quick-access-label">Expenses</span></button>
+                        <button class="quick-access-link" type="button" data-tab="income" aria-label="Income" title="Income" onclick="switchTab('income', this)"><span class="quick-access-icon">💰</span><span class="quick-access-label">Income</span></button>
+                        <button class="quick-access-link" type="button" data-tab="budgets" aria-label="Budgets" title="Budgets" onclick="switchTab('budgets', this)"><span class="quick-access-icon">🧾</span><span class="quick-access-label">Budgets</span></button>
+                        <div class="quick-access-group-label">Planning</div>
+                        <button class="quick-access-link" type="button" data-tab="goals" aria-label="Goals" title="Goals" onclick="switchTab('goals', this)"><span class="quick-access-icon">🎯</span><span class="quick-access-label">Goals</span></button>
+                        <button class="quick-access-link" type="button" data-tab="savings" aria-label="Savings" title="Savings" onclick="switchTab('savings', this)"><span class="quick-access-icon">💧</span><span class="quick-access-label">Savings</span></button>
+                        <button class="quick-access-link" type="button" data-tab="events" aria-label="Events" title="Events" onclick="switchTab('events', this)"><span class="quick-access-icon">📅</span><span class="quick-access-label">Events</span></button>
+                        <button class="quick-access-link" type="button" data-tab="investments" aria-label="Investments" title="Investments" onclick="switchTab('investments', this)"><span class="quick-access-icon">📈</span><span class="quick-access-label">Investments</span></button>
+                        <button class="quick-access-link" type="button" data-tab="retirement" aria-label="Retirement" title="Retirement" onclick="switchTab('retirement', this)"><span class="quick-access-icon">🧓</span><span class="quick-access-label">Retirement</span></button>
+                        <button class="quick-access-link" type="button" data-tab="insurance" aria-label="Insurances" title="Insurances" onclick="switchTab('insurance', this)"><span class="quick-access-icon">🛡️</span><span class="quick-access-label">Insurances</span></button>
+                        <button class="quick-access-link" type="button" data-tab="assets" aria-label="Assets" title="Assets" onclick="switchTab('assets', this)"><span class="quick-access-icon">🏠</span><span class="quick-access-label">Assets</span></button>
+                        <button class="quick-access-link" type="button" data-tab="liabilities" aria-label="Liabilities" title="Liabilities" onclick="switchTab('liabilities', this)"><span class="quick-access-icon">🏦</span><span class="quick-access-label">Liabilities</span></button>
+                        <div class="quick-access-group-label">Review</div>
+                        <button class="quick-access-link" type="button" data-tab="insights" aria-label="Fin Insights" title="Fin Insights" onclick="switchTab('insights', this)"><span class="quick-access-icon">🧠</span><span class="quick-access-label">Fin_Insights</span></button>
+                        <div class="quick-access-group-label">Overview</div>
+                        <button class="quick-access-link" type="button" data-action="health" aria-label="Financial Health" title="Financial Health" onclick="executeMenuAction('health', 'Financial Health')"><span class="quick-access-icon">🧭</span><span class="quick-access-label">Health</span></button>
+                        <button class="quick-access-link" type="button" data-action="balance" aria-label="Current Balance" title="Current Balance" onclick="executeMenuAction('balance', 'Current Balance')"><span class="quick-access-icon">💳</span><span class="quick-access-label">Balance</span></button>
+                        <button class="quick-access-link" type="button" data-action="networth" aria-label="Net Worth" title="Net Worth" onclick="executeMenuAction('networth', 'Net Worth')"><span class="quick-access-icon">🐷</span><span class="quick-access-label">Net Worth</span></button>
+                        <button class="quick-access-link" type="button" data-action="emergency" aria-label="Emergency Fund" title="Emergency Fund" onclick="executeMenuAction('emergency', 'Emergency Fund')"><span class="quick-access-icon">🛟</span><span class="quick-access-label">Emergency</span></button>
+                        <button class="quick-access-link" type="button" data-action="creditCards" aria-label="Credit Cards" title="Credit Cards" onclick="executeMenuAction('creditCards', 'Credit Cards')"><span class="quick-access-icon">💳</span><span class="quick-access-label">Cards</span></button>
+                        <button class="quick-access-link" type="button" data-action="tax" aria-label="Taxes" title="Taxes" onclick="executeMenuAction('tax', 'Taxes')"><span class="quick-access-icon">🧾</span><span class="quick-access-label">Taxes</span></button>
+                        <button class="quick-access-link" type="button" data-action="forecast" aria-label="Forecast" title="Forecast" onclick="executeMenuAction('forecast', 'Forecast')"><span class="quick-access-icon">🔮</span><span class="quick-access-label">Forecast</span></button>
+                    </div>
+                </aside>
+                <div class="quick-access-main">
 
         <!-- Expenses Section -->
         <div id="expenses-section" class="section">
@@ -4668,6 +4680,10 @@
             </div>
         </div>
     </div>
+
+                </div>
+            </div>
+        </div>
 
     <!-- Transaction Modal -->
     <div id="transactionModal" class="modal">
@@ -6078,6 +6094,38 @@
             setMarketWidgetsVisibility(!isVisible);
         }
 
+        function setQuickAccessCollapsed(collapsed) {
+            const panel = document.querySelector('.quick-access-panel');
+            const shell = document.querySelector('.tabs-shell');
+            const toggleBtn = document.getElementById('quickAccessToggleBtn');
+            if (!panel || !shell) return;
+
+            panel.classList.toggle('is-collapsed', collapsed);
+            shell.classList.toggle('quick-access-collapsed', collapsed);
+            localStorage.setItem(QUICK_ACCESS_VISIBILITY_KEY, collapsed ? 'collapsed' : 'expanded');
+
+            if (toggleBtn) {
+                toggleBtn.textContent = collapsed ? '▶' : '◀';
+                toggleBtn.title = collapsed ? 'Expand quick access' : 'Collapse quick access';
+                toggleBtn.setAttribute('aria-label', collapsed ? 'Expand quick access' : 'Collapse quick access');
+                toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            }
+        }
+
+        function getQuickAccessCollapsed() {
+            return localStorage.getItem(QUICK_ACCESS_VISIBILITY_KEY) === 'collapsed';
+        }
+
+        function toggleQuickAccessPanel() {
+            const panel = document.querySelector('.quick-access-panel');
+            if (!panel) return;
+            setQuickAccessCollapsed(!panel.classList.contains('is-collapsed'));
+        }
+
+        function initQuickAccessPanel() {
+            setQuickAccessCollapsed(getQuickAccessCollapsed());
+        }
+
         function setMarketWidgetsFirewallMode(internetDisabled) {
             const theme = document.body.getAttribute('data-theme') || 'light';
             const marketWidgets = document.querySelectorAll('.market-widget');
@@ -6373,31 +6421,13 @@
             if (!isAdmin()) {
                 settingsUnlocked = false;
             }
-            document.querySelectorAll('.quick-tab').forEach((tabBtn) => {
+            document.querySelectorAll('.quick-access-link').forEach((tabBtn) => {
                 const tabName = tabBtn.dataset.tab;
                 tabBtn.style.display = hasTabAccess(tabName) ? '' : 'none';
             });
-            document.querySelectorAll('.tab-menu-item').forEach((tabBtn) => {
-                const tabName = tabBtn.dataset.tab;
-                if (tabName && !['users', 'settings'].includes(tabName)) {
-                    tabBtn.style.display = hasTabAccess(tabName) ? 'block' : 'none';
-                }
-            });
-            const usersTabButton = document.getElementById('usersTabButton');
-            if (usersTabButton) {
-                usersTabButton.style.display = isAdmin() && hasTabAccess('users') ? 'block' : 'none';
-            }
-            const settingsTabButton = document.getElementById('settingsTabButton');
-            if (settingsTabButton) {
-                settingsTabButton.style.display = isAdmin() && hasTabAccess('settings') ? 'block' : 'none';
-            }
             const settingsCornerBtn = document.getElementById('settingsCornerBtn');
             if (settingsCornerBtn) {
                 settingsCornerBtn.style.display = isAdmin() && hasTabAccess('settings') ? 'inline-flex' : 'none';
-            }
-            const auditTabButton = document.querySelector('.tab-menu-item[data-tab="audit"]');
-            if (auditTabButton) {
-                auditTabButton.style.display = hasTabAccess('audit') && hasAppPermission('view_audit') ? 'block' : 'none';
             }
         }
 
@@ -6693,6 +6723,7 @@
         const EXPENSE_COLUMNS_STORAGE_KEY = 'expense_table_columns_v1';
         const MARKET_WIDGET_VISIBILITY_KEY = 'finapp_market_widgets_visible';
         const DASHBOARD_PRIVACY_KEY = 'finapp_dashboard_values_visible';
+        const QUICK_ACCESS_VISIBILITY_KEY = 'finapp_quick_access_collapsed';
         const FORMULA_CONFIG_STORAGE_KEY = 'ledger_formula_config_v1';
         const SRE_SLO_CONFIG_STORAGE_KEY = 'ledger_sre_slo_config_v1';
         const EVENT_COUNTRY_STORAGE_KEY = 'events_holiday_country_v1';
@@ -18698,83 +18729,6 @@
             window.URL.revokeObjectURL(url);
         }
 
-        function getVisibleTabMenuItems() {
-            return Array.from(document.querySelectorAll('.tab-menu-item')).filter((item) => {
-                return window.getComputedStyle(item).display !== 'none';
-            });
-        }
-
-        function applyTabMenuFilter() {
-            const searchInput = document.getElementById('tabMenuSearch');
-            const query = (searchInput?.value || '').trim().toLowerCase();
-
-            document.querySelectorAll('.tab-menu-item').forEach((item) => {
-                const tabName = item.dataset.tab;
-                const roleHidden = (item.id === 'usersTabButton' || item.id === 'settingsTabButton') && !isAdmin();
-                const permissionHidden = !!tabName && !hasTabAccess(tabName);
-                const matches = !query || item.textContent.toLowerCase().includes(query);
-                item.style.display = (roleHidden || permissionHidden) ? 'none' : (matches ? 'block' : 'none');
-            });
-        }
-
-        function openTabMenu(focusTarget = 'active') {
-            const tabMenu = document.getElementById('tabMenu');
-            const menuButton = document.getElementById('tabMenuButton');
-            const searchInput = document.getElementById('tabMenuSearch');
-            if (!tabMenu || !menuButton) return;
-
-            tabMenu.classList.add('open');
-            menuButton.setAttribute('aria-expanded', 'true');
-
-            applyTabMenuFilter();
-
-            if (focusTarget === 'search') {
-                searchInput?.focus();
-                return;
-            }
-
-            const items = getVisibleTabMenuItems();
-            if (!items.length) return;
-
-            let targetItem = items[0];
-            if (focusTarget === 'active') {
-                targetItem = items.find((item) => item.classList.contains('active')) || items[0];
-            } else if (focusTarget === 'last') {
-                targetItem = items[items.length - 1];
-            }
-            targetItem.focus();
-        }
-
-        function closeTabMenu() {
-            const tabMenu = document.getElementById('tabMenu');
-            const menuButton = document.getElementById('tabMenuButton');
-            const searchInput = document.getElementById('tabMenuSearch');
-            if (tabMenu) tabMenu.classList.remove('open');
-            if (menuButton) menuButton.setAttribute('aria-expanded', 'false');
-            if (searchInput) {
-                searchInput.value = '';
-            }
-            applyTabMenuFilter();
-        }
-
-        function toggleTabMenu() {
-            const tabMenu = document.getElementById('tabMenu');
-            const menuButton = document.getElementById('tabMenuButton');
-            if (!tabMenu || !menuButton) return;
-
-            if (tabMenu.classList.contains('open')) {
-                closeTabMenu();
-                return;
-            }
-
-            openTabMenu('search');
-        }
-
-        function selectTabFromMenu(tab, element = null) {
-            switchTab(tab, element);
-            closeTabMenu();
-        }
-
         function executeMenuAction(actionKey, label = 'Overview') {
             const actionHandlers = {
                 health: () => handleOverviewTileClick('health'),
@@ -18792,13 +18746,6 @@
                 return;
             }
 
-            closeTabMenu();
-
-            const activeTabLabelEl = document.getElementById('activeTabLabel');
-            if (activeTabLabelEl) {
-                activeTabLabelEl.textContent = label;
-            }
-
             handler();
         }
 
@@ -18814,26 +18761,14 @@
                 return;
             }
 
-            document.querySelectorAll('.tab-menu-item').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.quick-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.quick-access-link').forEach(t => t.classList.remove('active'));
 
-            const menuTabButton = document.querySelector(`.tab-menu-item[data-tab="${tab}"]`);
-            const quickTabButton = document.querySelector(`.quick-tab[data-tab="${tab}"]`);
+            const quickAccessButton = document.querySelector(`.quick-access-link[data-tab="${tab}"]`);
 
-            if (menuTabButton) menuTabButton.classList.add('active');
-
-            if (element && element.classList.contains('quick-tab')) {
+            if (element && element.classList.contains('quick-access-link')) {
                 element.classList.add('active');
-            } else if (element && element.classList.contains('tab-menu-item')) {
-                element.classList.add('active');
-                if (quickTabButton) quickTabButton.classList.add('active');
-            } else if (quickTabButton) {
-                quickTabButton.classList.add('active');
-            }
-
-            const activeTabLabelEl = document.getElementById('activeTabLabel');
-            if (activeTabLabelEl) {
-                activeTabLabelEl.textContent = TAB_LABELS[tab] || 'Expenses';
+            } else if (quickAccessButton) {
+                quickAccessButton.classList.add('active');
             }
 
             if (tab !== 'settings') {
@@ -20632,25 +20567,17 @@
                     }
                 });
 
-                // Quick tabs
-                const quickTabs = document.querySelectorAll('.quick-tab');
-                quickTabs.forEach(tab => {
+                // Quick access links
+                const quickAccessLinks = document.querySelectorAll('.quick-access-link');
+                quickAccessLinks.forEach(tab => {
                     if (!tab.dataset.draggableId) {
-                        tab.dataset.draggableId = tab.dataset.tab + '-quick';
+                        const itemKey = tab.dataset.tab || tab.dataset.action;
+                        tab.dataset.draggableId = itemKey + '-quick-access';
                         tab.draggable = true;
                         tab.classList.add('draggable-item');
                     }
                 });
 
-                // Tab menu items
-                const menuItems = document.querySelectorAll('.tab-menu-item');
-                menuItems.forEach(item => {
-                    if (!item.dataset.draggableId) {
-                        item.dataset.draggableId = item.dataset.tab + '-menu';
-                        item.draggable = true;
-                        item.classList.add('draggable-item');
-                    }
-                });
             };
 
             setupDraggables();
@@ -20740,14 +20667,10 @@
                 // Save dashboard tile order
                 const cards = Array.from(container.querySelectorAll('.card'));
                 layout.cards = cards.map(card => card.dataset.draggableId);
-            } else if (container.classList.contains('quick-tabs')) {
-                // Save quick tabs order
-                const tabs = Array.from(container.querySelectorAll('.quick-tab'));
-                layout.quickTabs = tabs.map(tab => tab.dataset.tab);
-            } else if (container.classList.contains('tab-menu-dropdown')) {
-                // Save menu items order
-                const items = Array.from(container.querySelectorAll('.tab-menu-item'));
-                layout.menuItems = items.map(item => item.dataset.tab);
+            } else if (container.classList.contains('quick-access-list')) {
+                // Save quick access order
+                const tabs = Array.from(container.querySelectorAll('.quick-access-link'));
+                layout.quickAccess = tabs.map(tab => tab.dataset.tab || tab.dataset.action);
             }
 
             // Load existing layout and merge
@@ -20776,34 +20699,17 @@
                 }
             }
 
-            // Restore quick tabs order
-            if (savedLayout.quickTabs && savedLayout.quickTabs.length > 0) {
-                const quickTabsContainer = document.querySelector('.quick-tabs');
-                if (quickTabsContainer) {
-                    const tabs = Array.from(quickTabsContainer.querySelectorAll('.quick-tab'));
-                    const tabMap = new Map(tabs.map(t => [t.dataset.tab, t]));
-                    
-                    savedLayout.quickTabs.forEach(tab => {
-                        const tabEl = tabMap.get(tab);
-                        if (tabEl) quickTabsContainer.appendChild(tabEl);
-                    });
-                }
-            }
+            // Restore quick access order
+            const quickAccessOrder = savedLayout.quickAccess || savedLayout.quickTabs;
+            if (quickAccessOrder && quickAccessOrder.length > 0) {
+                const quickAccessContainer = document.querySelector('.quick-access-list');
+                if (quickAccessContainer) {
+                    const tabs = Array.from(quickAccessContainer.querySelectorAll('.quick-access-link'));
+                    const tabMap = new Map(tabs.map(t => [t.dataset.tab || t.dataset.action, t]));
 
-            // Restore menu items order
-            if (savedLayout.menuItems && savedLayout.menuItems.length > 0) {
-                const menuDropdown = document.querySelector('.tab-menu-dropdown');
-                if (menuDropdown) {
-                    const items = Array.from(menuDropdown.querySelectorAll('.tab-menu-item'));
-                    const itemMap = new Map(items.map(i => [i.dataset.tab, i]));
-                    
-                    // Keep search input at the top
-                    const searchInput = menuDropdown.querySelector('.tab-menu-search');
-                    const insertPoint = searchInput ? searchInput.nextElementSibling : menuDropdown.firstChild;
-                    
-                    savedLayout.menuItems.forEach(tab => {
-                        const item = itemMap.get(tab);
-                        if (item) menuDropdown.insertBefore(item, insertPoint);
+                    quickAccessOrder.forEach(tab => {
+                        const tabEl = tabMap.get(tab);
+                        if (tabEl) quickAccessContainer.appendChild(tabEl);
                     });
                 }
             }
@@ -20822,6 +20728,7 @@
             try {
                 applyTheme(getPreferredTheme());
                 initMarketSnapshot();
+                initQuickAccessPanel();
                 await checkBackendHealth();
 
                 // Check authentication first
@@ -20950,80 +20857,7 @@
                 if (isCalendarInput(target)) {
                     promptCalendarPicker(target);
                 }
-
-                const tabMenu = document.getElementById('tabMenu');
-                if (tabMenu && !tabMenu.contains(target)) {
-                    closeTabMenu();
-                }
             }, { capture: true });
-
-            document.addEventListener('keydown', (e) => {
-                const tabMenu = document.getElementById('tabMenu');
-                const menuButton = document.getElementById('tabMenuButton');
-                const searchInput = document.getElementById('tabMenuSearch');
-                if (!tabMenu || !menuButton) return;
-
-                const target = e.target;
-                if (!target || !tabMenu.contains(target)) return;
-
-                const items = getVisibleTabMenuItems();
-                const isOpen = tabMenu.classList.contains('open');
-                const currentIndex = items.indexOf(document.activeElement);
-
-                if (e.key === 'Escape' && isOpen) {
-                    e.preventDefault();
-                    closeTabMenu();
-                    menuButton.focus();
-                    return;
-                }
-
-                if (target === menuButton) {
-                    if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        openTabMenu('active');
-                        return;
-                    }
-                    if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        openTabMenu('last');
-                        return;
-                    }
-                    return;
-                }
-
-                if (target === searchInput) {
-                    if (!isOpen || !items.length) return;
-
-                    if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        items[0].focus();
-                    } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        items[items.length - 1].focus();
-                    }
-                    return;
-                }
-
-                if (!isOpen || !items.length) return;
-
-                if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % items.length : 0;
-                    items[nextIndex].focus();
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    const prevIndex = currentIndex >= 0
-                        ? (currentIndex - 1 + items.length) % items.length
-                        : items.length - 1;
-                    items[prevIndex].focus();
-                } else if (e.key === 'Home') {
-                    e.preventDefault();
-                    items[0].focus();
-                } else if (e.key === 'End') {
-                    e.preventDefault();
-                    items[items.length - 1].focus();
-                }
-            });
         };
 
         window.addEventListener('message', async (event) => {
