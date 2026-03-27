@@ -8,7 +8,7 @@ python-multipart==0.0.9
 
 # Database
 sqlalchemy==2.0.48
-pymysql==1.1.0
+pymysql==1.1.1
 
 # Authentication (Simple - No Argon2 to avoid build issues)
 python-jose[cryptography]==3.3.0
